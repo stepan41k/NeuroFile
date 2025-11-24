@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Neuro Space</title>
+
+		<!-- Google Fonts: Inter (UI) & Lora (Headings/Serif) -->
+		<link
+			href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500&family=Lora:ital,wght@0,400;0,500;1,400&display=swap"
+			rel="stylesheet"
+		/>
+
+		<!-- Bootstrap Icons -->
+		<link
+			rel="stylesheet"
+			href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css"
+		/>
+		<!-- Bootstrap 5 (Grid only mostly) -->
+		<link
+			href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+			rel="stylesheet"
+		/>
+
+		<link rel="stylesheet" href="/src/style.css" />
+	</head>
+	<body>
+		<div class="app-layout">
+			<!-- Minimal Sidebar (Icons only) -->
+			<nav class="sidebar">
+				<div class="sidebar-top">
+					<!-- Кнопка "Новый чат" стала широкой -->
+					<a href="#" class="new-chat-btn" title="New Chat">
+						<i class="bi bi-plus-lg"></i>
+						<span>New chat</span>
+					</a>
+
+					<div class="nav-icons">
+						<a href="#" class="nav-item active">
+							<i class="bi bi-chat-square-text"></i>
+							<span>Recent chats</span>
+						</a>
+						<a href="#" class="nav-item">
+							<i class="bi bi-collection"></i>
+							<span>Library</span>
+						</a>
+						<a href="#" class="nav-item">
+							<i class="bi bi-clock-history"></i>
+							<span>History</span>
+						</a>
+					</div>
+				</div>
+
+				<div class="sidebar-bottom">
+					<a href="#" class="nav-item profile">
+						<div class="avatar">S</div>
+						<span>Stepan</span>
+					</a>
+				</div>
+			</nav>
+
+			<!-- Main Content -->
+			<main class="main-area">
+				<!-- Chat Container -->
+				<div class="chat-scroll-area" id="chatContainer">
+					<!-- Welcome Screen (Centered) -->
+					<div class="welcome-screen fade-in">
+						<div class="welcome-content">
+							<h1 class="display-font">Hi there, Stepan!</h1>
+						</div>
+					</div>
+				</div>
+
+				<!-- Floating Input Area -->
+				<div class="input-dock">
+					<div class="input-container">
+						<textarea
+							id="userInput"
+							class="chat-input"
+							placeholder="Message Neuro..."
+							rows="1"
+						></textarea>
+
+						<div class="input-actions">
+							<div class="left-actions">
+								<button class="icon-btn" title="Attach">
+									<i class="bi bi-paperclip"></i>
+								</button>
+								<button class="icon-btn" title="Settings">
+									<i class="bi bi-sliders"></i>
+								</button>
+							</div>
+							<div class="right-actions">
+								<button class="send-btn" id="sendBtn">
+									<i class="bi bi-arrow-up-short"></i>
+								</button>
+							</div>
+						</div>
+					</div>
+					<div class="footer-text">
+						AI can make mistakes. Please double check responses.
+					</div>
+				</div>
+			</main>
+		</div>
+
+		<script type="module" src="/src/main.ts"></script>
+	</body>
+</html>
