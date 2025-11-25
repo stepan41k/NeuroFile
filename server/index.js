@@ -183,12 +183,19 @@ app.post(
 	async (req, res) => {
 		if (!req.file) return res.status(400).json({ error: 'No file uploaded' })
 
-		const { filename, originalname, size, path: filePath } = req.file
+		const { filename, size, path: filePath } = req.file
+
+		// --- ИСПРАВЛЕНИЕ КОДИРОВКИ ---
+		// Преобразуем "битую" строку Latin1 обратно в буфер, а затем читаем как UTF-8
+		const originalname = Buffer.from(req.file.originalname, 'latin1').toString(
+			'utf8'
+		)
+		// -----------------------------
+
 		const ext = path.extname(originalname).toLowerCase().replace('.', '')
 		const type = ['jpg', 'png', 'jpeg'].includes(ext) ? 'img' : ext
 
 		try {
-			// Используем RETURNING id, чтобы получить ID новой записи сразу
 			const result = await pool.query(
 				`INSERT INTO files (user_id, filename, original_name, size, path, type) 
              VALUES ($1, $2, $3, $4, $5, $6) 
@@ -197,6 +204,7 @@ app.post(
 			)
 
 			const newFileId = result.rows[0].id
+			// Возвращаем фронтенду уже правильное имя
 			res.json({ id: newFileId, name: originalname, size, type })
 		} catch (err) {
 			console.error(err)
@@ -247,6 +255,35 @@ app.delete('/api/files/:id', authenticateToken, async (req, res) => {
 	} catch (err) {
 		console.error(err)
 		res.status(500).send()
+	}
+})
+
+app.put('/api/files/:id', authenticateToken, async (req, res) => {
+	const { id } = req.params
+	const { name } = req.body
+	const userId = req.user.id
+
+	// Валидация
+	if (!name || name.trim().length === 0) {
+		return res.status(400).json({ error: 'Имя файла не может быть пустым' })
+	}
+
+	try {
+		const result = await pool.query(
+			'UPDATE files SET original_name = $1 WHERE id = $2 AND user_id = $3',
+			[name.trim(), id, userId]
+		)
+
+		if (result.rowCount === 0) {
+			return res
+				.status(404)
+				.json({ error: 'Файл не найден или нет прав доступа' })
+		}
+
+		res.json({ message: 'Файл успешно переименован' })
+	} catch (err) {
+		console.error('Ошибка переименования:', err)
+		res.status(500).json({ error: 'Ошибка сервера' })
 	}
 })
 
