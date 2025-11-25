@@ -19,6 +19,39 @@ class AuthManager {
 	}
 
 	private initListeners() {
+        const profileBtn = document.getElementById('userProfileBtn')
+		const profileMenu = document.getElementById('profileMenu')
+		const confirmLogoutBtn = document.getElementById('confirmLogoutBtn')
+		// const menuUsername = document.getElementById('menuUsername')
+
+		// Клик по профилю -> Показать/Скрыть меню
+		profileBtn?.addEventListener('click', e => {
+			e.preventDefault()
+			e.stopPropagation() // Чтобы клик не ушел на document
+
+			// Обновляем имя в меню перед показом
+			// if (menuUsername) {
+			// 	menuUsername.innerText = localStorage.getItem('neuro_username') || 'User'
+			// }
+
+			profileMenu?.classList.toggle('d-none')
+		})
+
+		// 2. Логика выхода (нажатие на кнопку Log out в меню)
+		confirmLogoutBtn?.addEventListener('click', () => {
+			this.logout()
+		})
+
+		// 3. Закрытие меню при клике в любое другое место
+		document.addEventListener('click', e => {
+			if (profileMenu && !profileMenu.classList.contains('d-none')) {
+				// Если клик был НЕ по меню и НЕ по кнопке профиля
+				if (!profileMenu.contains(e.target as Node) && !profileBtn?.contains(e.target as Node)) {
+					profileMenu.classList.add('d-none')
+				}
+			}
+		})
+
 		// Переключение на Регистрацию
 		document.getElementById('toRegisterLink')?.addEventListener('click', e => {
 			e.preventDefault()
@@ -216,7 +249,7 @@ class NeuralInterface {
 	private token: string = ''
 
 	constructor(token: string, username: string) {
-        this.token = token
+		this.token = token
 		this.chatContainer = document.getElementById('chatContainer') as HTMLElement
 		this.userInput = document.getElementById('userInput') as HTMLTextAreaElement
 		this.sendBtn = document.getElementById('sendBtn') as HTMLButtonElement
@@ -356,19 +389,37 @@ class NeuralInterface {
 		}, 20)
 	}
 
+	private async loadFilesFromServer() {
+		try {
+			const token = localStorage.getItem('neuro_token')
+			const res = await fetch(`${API_URL}/files`, {
+				headers: { Authorization: `Bearer ${token}` },
+			})
+			const files = await res.json()
+
+			this.filesData = [] // Очищаем старые/демо данные
+
+			// Заполняем данными из БД
+			files.forEach((f: any) => {
+				this.addFileToState(f.id, f.name, f.size, f.type)
+			})
+		} catch (e) {
+			console.error('Error loading files:', e)
+		}
+	}
+
 	// --- 3. Files Logic (Updated with Renaming) ---
 	private initFiles() {
 		// Добавляем демо-данные
-		this.addFileToState('project_requirements.pdf', 2500000)
-		this.addFileToState('backend_api_v2.docx', 12000)
-		this.addFileToState('logo_concept.png', 450000)
-		this.addFileToState('notes.txt', 1024)
+
+		this.loadFilesFromServer()
 
 		// 1. Обработка загрузки файла
 		this.fileInput.addEventListener('change', () => {
 			if (this.fileInput.files && this.fileInput.files.length > 0) {
 				const file = this.fileInput.files[0]
-				this.addFileToState(file.name, file.size)
+				// Вместо addFileToState вызываем uploadFile
+				this.uploadFile(file)
 			}
 		})
 
@@ -391,19 +442,61 @@ class NeuralInterface {
 		})
 	}
 
-	private addFileToState(name: string, size: number) {
-		const ext = name.split('.').pop()?.toLowerCase() || 'unknown'
-		const type = this.mapExtensionToType(ext) // pdf, docx, img, etc.
-
-		const newFile = {
-			id: Date.now().toString() + Math.random(),
-			name: name,
-			size: size,
-			type: type, // Сохраняем упрощенный тип для фильтрации
+	private addFileToState(
+		id: string | number,
+		name: string,
+		size: number,
+		type?: string
+	) {
+		// Если тип не передан, пытаемся определить по расширению
+		if (!type) {
+			const ext = name.split('.').pop()?.toLowerCase() || 'unknown'
+			type = this.mapExtensionToType(ext)
 		}
 
-		this.filesData.unshift(newFile) // Добавляем в начало
+		const newFile = {
+			id: id.toString(), // Приводим к строке для единообразия в JS
+			name: name,
+			size: size,
+			type: type,
+		}
+
+		this.filesData.unshift(newFile)
 		this.renderFiles()
+	}
+
+	private async uploadFile(file: File) {
+		const formData = new FormData()
+		formData.append('file', file)
+
+		// Показываем какой-то индикатор загрузки (опционально)
+		// Но пока просто заблокируем инпут
+		this.fileInput.disabled = true
+
+		try {
+			const token = localStorage.getItem('neuro_token')
+			const res = await fetch(`${API_URL}/files`, {
+				method: 'POST',
+				headers: {
+					Authorization: `Bearer ${token}`,
+					// Content-Type не нужен, браузер сам поставит multipart/form-data
+				},
+				body: formData,
+			})
+
+			if (!res.ok) throw new Error('Upload failed')
+
+			const data = await res.json()
+
+			// ВАЖНО: Добавляем файл в стейт, используя ID из базы данных (data.id)
+			this.addFileToState(data.id, data.name, data.size, data.type)
+		} catch (e) {
+			console.error(e)
+			alert('Ошибка загрузки файла')
+		} finally {
+			this.fileInput.value = '' // Сброс инпута
+			this.fileInput.disabled = false
+		}
 	}
 
 	private mapExtensionToType(ext: string): string {
@@ -485,19 +578,68 @@ class NeuralInterface {
 			fileInfoDiv.insertBefore(input, nameSpan)
 			input.focus()
 
-			const saveName = () => {
+			const saveName = async () => {
 				const newName = input.value.trim()
-				if (newName) {
-					// Обновляем данные в массиве
+				const currentName = nameSpan.innerText
+
+				// Если имя не изменилось или пустое — просто отменяем
+				if (!newName || newName === currentName) {
+					input.remove()
+					nameSpan.style.display = 'block'
+					return
+				}
+
+				// Блокируем инпут пока идет запрос
+				input.disabled = true
+
+				try {
+					// Отправляем запрос на сервер
+					const token = localStorage.getItem('neuro_token')
+					const res = await fetch(`${API_URL}/files/${file.id}`, {
+						method: 'PUT',
+						headers: {
+							'Content-Type': 'application/json',
+							Authorization: `Bearer ${token}`,
+						},
+						body: JSON.stringify({ name: newName }),
+					})
+
+					if (!res.ok) {
+						const errData = await res.json()
+						throw new Error(errData.error || 'Failed to rename')
+					}
+
+					// 1. Обновляем данные в локальном стейте (массиве)
 					const targetFile = this.filesData.find(f => f.id === file.id)
 					if (targetFile) targetFile.name = newName
 
+					// 2. Обновляем UI
 					nameSpan.innerText = newName
 					nameSpan.title = newName
+				} catch (err: any) {
+					console.error(err)
+					alert(`Ошибка: ${err.message}`)
+					// Возвращаем старое имя при ошибке
+					input.value = currentName
+					nameSpan.innerText = currentName
+				} finally {
+					// Убираем инпут и показываем текст
+					input.remove()
+					nameSpan.style.display = 'block'
 				}
-				input.remove()
-				nameSpan.style.display = 'block'
 			}
+
+			input.addEventListener('keydown', e => {
+				if (e.key === 'Enter') saveName()
+				// По Esc отменяем редактирование
+				if (e.key === 'Escape') {
+					input.remove()
+					nameSpan.style.display = 'block'
+				}
+			})
+
+			// blur запускает сохранение, когда кликаем вне поля
+			input.addEventListener('blur', () => saveName())
 
 			input.addEventListener('keydown', e => {
 				if (e.key === 'Enter') saveName()

@@ -471,3 +471,62 @@ body {
     color: var(--accent-hover);
     text-decoration: underline;
 }
+
+.sidebar-bottom {
+    width: 100%;
+}
+
+.profile-menu {
+    position: absolute;
+    bottom: 100%; /* Появляется НАД кнопкой */
+    left: 0;
+    width: 100%; /* Ширина равна ширине сайдбара */
+    background-color: #252525;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    padding: 4px;
+    margin-bottom: 10px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    z-index: 100;
+    animation: popUp 0.2s ease-out;
+    transform-origin: bottom center;
+}
+
+.menu-header {
+    padding: 8px 12px;
+}
+
+.menu-divider {
+    height: 1px;
+    background-color: rgba(255, 255, 255, 0.1);
+    margin: 8px 0;
+}
+
+.menu-item {
+    width: 100%;
+    background: transparent;
+    border: none;
+    color: var(--text-primary);
+    padding: 10px 12px;
+    text-align: left;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    transition: background 0.2s;
+}
+
+.menu-item:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+}
+
+.menu-item.text-danger:hover {
+    background-color: rgba(255, 107, 107, 0.1);
+}
+
+@keyframes popUp {
+    from { opacity: 0; transform: scale(0.95) translateY(10px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+}

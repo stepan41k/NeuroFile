@@ -102,10 +102,19 @@
             </div>
         </div>
         
-        <div class="sidebar-bottom">
-            <a href="#" class="nav-item profile" id="logoutBtn">
-                <div class="avatar">S</div>
-                <span id="usernameDisplay">Stepan</span>
+        <div class="sidebar-bottom position-relative">
+            <!-- Меню выхода (Скрыто по умолчанию) -->
+            <div id="profileMenu" class="profile-menu d-none">
+                <button id="confirmLogoutBtn" class="menu-item text-danger mb-0">
+                    <i class="bi bi-box-arrow-right"></i>
+                    Log out
+                </button>
+            </div>
+
+            <!-- Кнопка профиля -->
+            <a href="#" class="nav-item profile" id="userProfileBtn">
+                <div class="avatar">U</div>
+                <span id="usernameDisplay">User</span>
             </a>
         </div>
     </nav>
