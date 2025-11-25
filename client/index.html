@@ -1,109 +1,192 @@
 <!DOCTYPE html>
 <html lang="en">
-	<head>
-		<meta charset="UTF-8" />
-		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-		<title>Neuro Space</title>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neuro File</title>
+    
+    <!-- Fonts: Inter (UI) & Lora (Headings) -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Lora:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+    
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <!-- Bootstrap 5 Grid -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <link rel="stylesheet" href="/src/style.css">
+</head>
+<body>
 
-		<!-- Google Fonts: Inter (UI) & Lora (Headings/Serif) -->
-		<link
-			href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500&family=Lora:ital,wght@0,400;0,500;1,400&display=swap"
-			rel="stylesheet"
-		/>
+<!-- Auth Overlay -->
+<div id="authOverlay" class="auth-overlay">
+    <div class="auth-box">
+        <h2 class="display-font text-white mb-2 text-center">Neuro File</h2>
+        <p class="text-center mb-4 small" id="authSubtitle">Login to your workspace</p>
+        
+        <!-- Сообщения об ошибках/успехе -->
+        <div id="authMessage" class="alert d-none small p-2 mb-3 text-center"></div>
 
-		<!-- Bootstrap Icons -->
-		<link
-			rel="stylesheet"
-			href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css"
-		/>
-		<!-- Bootstrap 5 (Grid only mostly) -->
-		<link
-			href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
-			rel="stylesheet"
-		/>
+        <!-- Login Form -->
+        <form id="loginForm" class="auth-form active">
+            <div class="mb-3">
+                <input type="text" id="loginUser" class="form-control custom-input-auth" placeholder="Username" required>
+            </div>
+            <div class="mb-3">
+                <input type="password" id="loginPass" class="form-control custom-input-auth" placeholder="Password" required>
+            </div>
+            <button type="submit" class="btn btn-accent w-100 mb-3" id="loginBtn">
+                <span class="btn-text">Log In</span>
+                <span class="spinner-border spinner-border-sm d-none" role="status"></span>
+            </button>
+            <div class="text-center">
+                <span class="small">No account? </span>
+                <a href="#" id="toRegisterLink" class="text-accent small fw-bold">Sign up</a>
+            </div>
+        </form>
 
-		<link rel="stylesheet" href="/src/style.css" />
-	</head>
-	<body>
-		<div class="app-layout">
-			<!-- Minimal Sidebar (Icons only) -->
-			<nav class="sidebar">
-				<div class="sidebar-top">
-					<!-- Кнопка "Новый чат" стала широкой -->
-					<a href="#" class="new-chat-btn" title="New Chat">
-						<i class="bi bi-plus-lg"></i>
-						<span>New chat</span>
-					</a>
+        <!-- Register Form -->
+        <form id="registerForm" class="auth-form d-none">
+            <div class="mb-3">
+                <input type="text" id="regUser" class="form-control custom-input-auth" placeholder="Choose Username" required>
+            </div>
+            <div class="mb-3">
+                <input type="password" id="regPass" class="form-control custom-input-auth" placeholder="Password (min 6 chars)" required>
+            </div>
+            <div class="mb-3">
+                <input type="password" id="regPassConfirm" class="form-control custom-input-auth" placeholder="Confirm Password" required>
+            </div>
+            <button type="submit" class="btn btn-accent w-100 mb-3" id="regBtn">
+                <span class="btn-text">Create Account</span>
+                <span class="spinner-border spinner-border-sm d-none" role="status"></span>
+            </button>
+            <div class="text-center">
+                <span class="small">Already have an account? </span>
+                <a href="#" id="toLoginLink" class="text-accent small fw-bold">Log in</a>
+            </div>
+        </form>
+    </div>
+</div>
 
-					<div class="nav-icons">
-						<a href="#" class="nav-item active">
-							<i class="bi bi-chat-square-text"></i>
-							<span>Recent chats</span>
-						</a>
-						<a href="#" class="nav-item">
-							<i class="bi bi-collection"></i>
-							<span>Library</span>
-						</a>
-						<a href="#" class="nav-item">
-							<i class="bi bi-clock-history"></i>
-							<span>History</span>
-						</a>
-					</div>
-				</div>
+<div class="app-layout">
+    
+    <!-- Left Sidebar -->
+    <nav class="sidebar">
+        <div class="sidebar-top">
+            <a href="#" class="new-chat-btn" title="New Chat">
+                <i class="bi bi-plus-lg"></i>
+                <span>New chat</span>
+            </a>
+            
+            <div class="nav-icons" id="historyList">
+                
+                <!-- Заголовок раздела (как на скрине) -->
+                
 
-				<div class="sidebar-bottom">
-					<a href="#" class="nav-item profile">
-						<div class="avatar">S</div>
-						<span>Stepan</span>
-					</a>
-				</div>
-			</nav>
+                <!-- Library: Иконка коллекции -->
+                <a href="#" class="nav-item">
+                    <i class="bi bi-collection"></i> 
+                    <span>Library</span>
+                </a>
 
-			<!-- Main Content -->
-			<main class="main-area">
-				<!-- Chat Container -->
-				<div class="chat-scroll-area" id="chatContainer">
-					<!-- Welcome Screen (Centered) -->
-					<div class="welcome-screen fade-in">
-						<div class="welcome-content">
-							<h1 class="display-font">Hi there, Stepan!</h1>
-						</div>
-					</div>
-				</div>
+                <!-- History: Иконка часов -->
+                <a href="#" class="nav-item">
+                    <i class="bi bi-clock-history"></i>
+                    <span>History</span>
+                </a>
 
-				<!-- Floating Input Area -->
-				<div class="input-dock">
-					<div class="input-container">
-						<textarea
-							id="userInput"
-							class="chat-input"
-							placeholder="Message Neuro..."
-							rows="1"
-						></textarea>
+                <!-- Можно добавить Settings для полноты картины -->
+                <a href="#" class="nav-item">
+                    <i class="bi bi-gear"></i>
+                    <span>Settings</span>
+                </a>
+            </div>
+        </div>
+        
+        <div class="sidebar-bottom">
+            <a href="#" class="nav-item profile" id="logoutBtn">
+                <div class="avatar">S</div>
+                <span id="usernameDisplay">Stepan</span>
+            </a>
+        </div>
+    </nav>
 
-						<div class="input-actions">
-							<div class="left-actions">
-								<button class="icon-btn" title="Attach">
-									<i class="bi bi-paperclip"></i>
-								</button>
-								<button class="icon-btn" title="Settings">
-									<i class="bi bi-sliders"></i>
-								</button>
-							</div>
-							<div class="right-actions">
-								<button class="send-btn" id="sendBtn">
-									<i class="bi bi-arrow-up-short"></i>
-								</button>
-							</div>
-						</div>
-					</div>
-					<div class="footer-text">
-						AI can make mistakes. Please double check responses.
-					</div>
-				</div>
-			</main>
-		</div>
+    <!-- Main Content -->
+    <main class="main-area">
+        <div class="chat-scroll-area" id="chatContainer">
+            <!-- Welcome Screen -->
+            <div class="welcome-screen fade-in">
+                <div class="welcome-content">
+                    <h1 class="display-font">How can I help you today?</h1>
+                </div>
+            </div>
+        </div>
 
-		<script type="module" src="/src/main.ts"></script>
-	</body>
+        <!-- Floating Input -->
+        <div class="input-dock">
+            <div class="input-container">
+                <textarea id="userInput" class="chat-input" placeholder="Message Neuro..." rows="1"></textarea>
+                
+                <div class="input-actions">
+                    <div class="left-actions">
+                        <button class="icon-btn" title="Web Search"><i class="bi bi-globe"></i></button>
+                        <button class="icon-btn" title="Settings"><i class="bi bi-sliders"></i></button>
+                    </div>
+                    <div class="right-actions">
+                        <button class="send-btn" id="sendBtn">
+                            <i class="bi bi-arrow-up-short"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="footer-text">AI generates simulated responses for UI testing.</div>
+        </div>
+    </main>
+
+    <!-- Right Sidebar: Files -->
+    <aside class="right-sidebar">
+        
+        <!-- Header -->
+        <div class="sidebar-header mb-2">
+            <h6 class="text-uppercase mb-0 small fw-bold">My Files</h6>
+            <button class="icon-btn-small" title="Refresh"><i class="bi bi-arrow-clockwise"></i></button>
+        </div>
+
+        <!-- Search & Filter Area (NEW) -->
+        <div class="search-filter-container">
+            <!-- Search Input -->
+            <div class="search-wrapper mb-2">
+                <i class="bi bi-search small"></i>
+                <input type="text" id="fileSearchInput" class="file-search-input" placeholder="Find file...">
+            </div>
+
+            <!-- Filter Tags -->
+            <div class="filter-scroll" id="filterContainer">
+                <span class="filter-tag active" data-type="all">All</span>
+                <span class="filter-tag" data-type="pdf">PDF</span>
+                <span class="filter-tag" data-type="docx">DOCX</span>
+                <span class="filter-tag" data-type="txt">TXT</span>
+                <span class="filter-tag" data-type="img">IMG</span>
+            </div>
+        </div>
+
+        <!-- File List -->
+        <div class="file-list-container mt-2" id="fileListContainer">
+            <!-- Файлы будут рендериться здесь через JS -->
+        </div>
+
+        <!-- Upload Area (Оставляем как было) -->
+        <div class="upload-area mt-auto">
+            <!-- ... код upload area ... -->
+             <label for="fileInput" class="upload-box">
+                <i class="bi bi-cloud-arrow-up text-accent mb-2 fs-3"></i>
+                <span class="small">Drop files here</span>
+                <input type="file" id="fileInput" hidden>
+            </label>
+        </div>
+    </aside>
+
+</div>
+
+<script type="module" src="/src/main.ts"></script>
+</body>
 </html>
