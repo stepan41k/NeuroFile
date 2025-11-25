@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  # 1. Сервис Базы Данных
+  db:
+    image: postgres:15-alpine
+    container_name: neuro_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: rootpassword
+      POSTGRES_DB: neuro_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  # 2. Бэкенд
+  server:
+    build:
+      context: ../server/
+    container_name: neuro_backend
+    restart: always
+    ports:
+      - "3000:3000"
+    depends_on:
+      - db
+    environment:
+      - PORT=3000
+      - JWT_SECRET=super_secret_key_change_me
+      - UPLOADS_PATH=/app/uploads
+      # Данные для подключения к Postgres
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_USER=admin
+      - DB_PASSWORD=rootpassword
+      - DB_NAME=neuro_db
+    volumes:
+      - ./server/uploads:/app/uploads
+
+  # 3. Фронтенд
+  client:
+    build:
+      context: ../client/
+    container_name: neuro_frontend
+    restart: always
+    ports:
+      - "8080:80"
+    depends_on:
+      - server
+
+volumes:
+  postgres_data:
