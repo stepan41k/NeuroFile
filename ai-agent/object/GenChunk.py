@@ -8,7 +8,7 @@ def add_source_and_id(chanks, source):
         chanks[id]["chunkID"] = id
     return chanks
 
-nltk.download("punkt", quiet=True)
+nltk.download('punkt_tab', quiet=True)
 
 def hash_text(text: str) -> str:
     return hashlib.md5(text.encode("utf-8")).hexdigest()

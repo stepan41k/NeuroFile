@@ -24,7 +24,7 @@ app = FastAPI()
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 DB_SEARCH = SearchSystem(device=DEVICE)
-DB_SEARCH.load("./SearchStartData/pre-best-V4") # Для локальных тестов
+DB_SEARCH.load("./SearchStartData/pre-best-V4.pkl") # Для локальных тестов
 
 RERANKER = Reranker(device=DEVICE)
 LLM = LLM(device=DEVICE)
@@ -67,7 +67,7 @@ def create_file(file: UploadFile = File(...)):
 
     # Проверка что в бд нет файла
     if DB_SEARCH.file_exists(temp_path.stem):
-        raise HTTPException(status_code=400, detail=f"File {filename} already exists")
+        raise HTTPException(status_code=400, detail=f"File {temp_path.name} already exists")
 
     # Определяем нужный парсер
     parser = get_parser_for_file(temp_path)
@@ -99,7 +99,7 @@ def update_file(file: UploadFile = File(...)):
 
     # Проверка что в бд нет файла
     if not DB_SEARCH.file_exists(temp_path.stem):
-        raise HTTPException(status_code=400, detail=f"File {temp_path.stem} not exists")
+        raise HTTPException(status_code=400, detail=f"File {temp_path.name} not exists")
 
     # Удаляем старые чанки
     DB_SEARCH.remove_by_source(temp_path.stem)
@@ -136,6 +136,7 @@ def delete_file(filename: str):
 
     # Удаляем старые чанки
     DB_SEARCH.remove_by_source(name_without_ext)
+    DB_SEARCH.build_index()
     return {"status": "deleted", "filename": filename}
 
 

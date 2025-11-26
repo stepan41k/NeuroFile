@@ -2,7 +2,7 @@ import hashlib
 import nltk
 from nltk.tokenize import sent_tokenize, word_tokenize
 
-nltk.download("punkt", quiet=True)
+nltk.download('punkt_tab', quiet=True)
 
 def add_source_and_id(chanks, source):
     for id in range(len(chanks)):

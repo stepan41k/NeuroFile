@@ -2,7 +2,7 @@ import subprocess
 import os
 import tempfile
 from docx import Document
-from LoadDOCX import parse_docx
+from object.LoadDOCX import parse_docx
 
 def parse_doc_or_rtf(file_path):
     """
