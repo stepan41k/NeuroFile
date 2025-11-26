@@ -126,33 +126,26 @@ class SearchSystem:
         self.bm25 = None
 
     # ======================= GET CONTEXT CHUNKS =======================
-    def get_context_chunks(self, chunk_id: str, n: int = 1, include_self: bool = True) -> List[Dict]:
-        """
-        Возвращает соседние чанки вокруг заданного chunk_id для контекстного поиска.
+    def get_context_chunks(self, chunk_id: str, source: str, n: int = 1, include_self: bool = True) -> List[Dict]:
+        # Находим все индексы чанков с заданным source
+        source_indices = [i for i, p in enumerate(self.payloads) if p.get("source") == source]
 
-        chunk_id: ID чанка
-        n: количество соседей слева и справа
-        include_self: включать ли сам чанк в результат
-
-        Возвращает список словарей вида:
-            {"relative_position": int, "payload": dict}
-        где relative_position = -2, -1, 0, +1, +2 и т.д.
-        """
-        if chunk_id not in self.ids:
+        # Находим индекс целевого чанка в пределах этого source
+        try:
+            idx_in_source = next(i for i in source_indices if self.payloads[i]["chunkID"] == chunk_id)
+        except StopIteration:
             return []
 
-        idx = self.ids.index(chunk_id)
-        start = max(0, idx - n)
-        end = min(len(self.payloads), idx + n + 1)
+        start = max(0, idx_in_source - n)
+        end = min(len(self.payloads), idx_in_source + n + 1)
 
         context = []
         for i in range(start, end):
-            if not include_self and i == idx:
+            if not include_self and i == idx_in_source:
                 continue
-            context.append({
-                "relative_position": i - idx,
-                "payload": self.payloads[i]
-            })
+            # Берем только чанки того же source
+            if self.payloads[i]["source"] == source:
+                context.append(self.payloads[i])
 
         return context
 
