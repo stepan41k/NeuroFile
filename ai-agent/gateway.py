@@ -142,7 +142,7 @@ def delete_file(filename: str):
 
 def smart_search_chunk(searchSystem: SearchSystem, reranker: Reranker, question: str):
     # На основе вопроса получаем ближайшие чанки (RAG + BM25)
-    chunks = searchSystem.search_hybrid(question, top_k=20, alpha=0.8)
+    chunks = searchSystem.search_hybrid(question, top_k=15, alpha=0.8)
 
     # Расширяем контекс для каждого чанка(+-1, сохраняя score и chunkID): {"source": str, "chunkIDs": array, "texts": array}
     filter_result = []
@@ -163,7 +163,7 @@ def smart_search_chunk(searchSystem: SearchSystem, reranker: Reranker, question:
         })
 
     # Получение лучших чанков(с контекстом)
-    reranker_output = reranker.rerank_results(question, filter_result, 5, 0.35)
+    reranker_output = reranker.rerank_results(question, filter_result, 4, 0.35)
 
     return reranker_output
 

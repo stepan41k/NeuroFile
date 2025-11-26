@@ -13,6 +13,11 @@ LLM_MODEL = "./model/decoder-encoder"
 RERANKER_MODEL = "./model/reranker"
 DB_DATA = "./SearchStartData/pre-best-V4.pkl"
 
+SYSTEM_PROMPT = (
+    "Используя только предоставленный контекст из документов, дай краткий и точный ответ на вопрос пользователя."
+    "Если контекст не содержит ответа — сообщи об этом."
+)
+
 
 def smart_search_chunk(searchSystem: SearchSystem, reranker: Reranker, question: str):
     # На основе вопроса получаем ближайшие чанки (RAG + BM25)
@@ -25,6 +30,7 @@ def smart_search_chunk(searchSystem: SearchSystem, reranker: Reranker, question:
         context_chunks = searchSystem.get_context_chunks(
             chunk["payload"]["chunkID"],
             chunk["payload"]["source"],
+            0
         )
 
         chunk_ids = [ch["chunkID"] for ch in context_chunks]
@@ -90,7 +96,8 @@ def main():
                 context = context + "\n---\n"
 
             # ====== Генерация ответа ======
-            answer = llm.generate_answer(question, context)
+            # answer = llm.generate_answer_old(question, context)
+            answer = llm.generate_answer([], question, context)
 
             used_docs = {c for c in source_chunks}
             writer.writerow([q_id, answer, "; ".join(used_docs)])

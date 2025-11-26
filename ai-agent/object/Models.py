@@ -77,6 +77,27 @@ class LLM:
         self.model = AutoModelForCausalLM.from_pretrained(model).to(device)
         self.device = device
 
+    def generate_answer_old(self, question, context):
+        prompt = (
+            f"{SYSTEM_PROMPT}\n\n"
+            f"Контекст:\n{context}\n\n"
+            f"Вопрос: {question}\nОтвет:"
+        )
+
+        inputs = self.tokenizer(prompt, return_tensors="pt", padding=True, truncation=True).to(self.device)
+
+        output = self.model.generate(
+            **inputs,
+            max_new_tokens=200,
+            do_sample=False,
+            temperature=1.0,
+            eos_token_id=self.tokenizer.eos_token_id,
+            pad_token_id=self.tokenizer.eos_token_id
+        )
+
+        decoded = self.tokenizer.decode(output[0], skip_special_tokens=True)
+        return decoded.split("Ответ:", 1)[-1].strip()
+
     def generate_answer(self, chat_history, question, context_text):
         # Преобразуем ключи, если нужно
         for msg in chat_history:
@@ -103,14 +124,14 @@ class LLM:
         )
 
         # Токенизация
-        model_inputs = self.tokenizer([text], return_tensors="pt").to(self.device)
+        model_inputs = self.tokenizer([text], return_tensors="pt", padding=True, truncation=True).to(self.device)
 
         # Генерация
         generated_ids = self.model.generate(
             **model_inputs,
-            max_new_tokens=512,
+            max_new_tokens=256,
             do_sample=False,
-            temperature=1.0,
+            temperature=0.3,
             eos_token_id=self.tokenizer.eos_token_id,
             pad_token_id=self.tokenizer.eos_token_id
         )

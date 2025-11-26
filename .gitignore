@@ -4,3 +4,4 @@ ai-agent/model
 ai-agent/dataset
 ai-agent/test_file
 .idea
+__pycache__/
