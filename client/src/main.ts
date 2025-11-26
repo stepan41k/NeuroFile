@@ -1,5 +1,7 @@
+// URL для Nginx прокси (автоматически перенаправляет на сервер)
 const API_URL = '/api'
 
+// --- КЛАСС АВТОРИЗАЦИИ ---
 class AuthManager {
 	private overlay: HTMLElement
 	private loginForm: HTMLFormElement
@@ -19,127 +21,78 @@ class AuthManager {
 	}
 
 	private initListeners() {
-        const profileBtn = document.getElementById('userProfileBtn')
-		const profileMenu = document.getElementById('profileMenu')
-		const confirmLogoutBtn = document.getElementById('confirmLogoutBtn')
-		// const menuUsername = document.getElementById('menuUsername')
-
-		// Клик по профилю -> Показать/Скрыть меню
-		profileBtn?.addEventListener('click', e => {
-			e.preventDefault()
-			e.stopPropagation() // Чтобы клик не ушел на document
-
-			// Обновляем имя в меню перед показом
-			// if (menuUsername) {
-			// 	menuUsername.innerText = localStorage.getItem('neuro_username') || 'User'
-			// }
-
-			profileMenu?.classList.toggle('d-none')
-		})
-
-		// 2. Логика выхода (нажатие на кнопку Log out в меню)
-		confirmLogoutBtn?.addEventListener('click', () => {
-			this.logout()
-		})
-
-		// 3. Закрытие меню при клике в любое другое место
-		document.addEventListener('click', e => {
-			if (profileMenu && !profileMenu.classList.contains('d-none')) {
-				// Если клик был НЕ по меню и НЕ по кнопке профиля
-				if (!profileMenu.contains(e.target as Node) && !profileBtn?.contains(e.target as Node)) {
-					profileMenu.classList.add('d-none')
-				}
-			}
-		})
-
-		// Переключение на Регистрацию
 		document.getElementById('toRegisterLink')?.addEventListener('click', e => {
 			e.preventDefault()
 			this.toggleForms(false)
 		})
 
-		// Переключение на Логин
 		document.getElementById('toLoginLink')?.addEventListener('click', e => {
 			e.preventDefault()
 			this.toggleForms(true)
 		})
 
-		// Сабмит Логина
-		this.loginForm.addEventListener('submit', async e => {
+		this.loginForm.addEventListener('submit', e => {
 			e.preventDefault()
-			await this.handleLogin()
+			this.handleLogin()
 		})
 
-		// Сабмит Регистрации
-		this.regForm.addEventListener('submit', async e => {
+		this.regForm.addEventListener('submit', e => {
 			e.preventDefault()
-			await this.handleRegister()
+			this.handleRegister()
 		})
 
-		// Logout кнопка (в сайдбаре)
-		document.getElementById('logoutBtn')?.addEventListener('click', e => {
+		// Меню профиля и выход
+		const profileBtn = document.getElementById('userProfileBtn')
+		const profileMenu = document.getElementById('profileMenu')
+		const confirmLogoutBtn = document.getElementById('confirmLogoutBtn')
+
+		profileBtn?.addEventListener('click', e => {
 			e.preventDefault()
-			this.logout()
+			e.stopPropagation()
+			profileMenu?.classList.toggle('d-none')
+		})
+
+		confirmLogoutBtn?.addEventListener('click', () => this.logout())
+
+		document.addEventListener('click', e => {
+			if (profileMenu && !profileMenu.classList.contains('d-none')) {
+				if (
+					!profileMenu.contains(e.target as Node) &&
+					!profileBtn?.contains(e.target as Node)
+				) {
+					profileMenu.classList.add('d-none')
+				}
+			}
 		})
 	}
 
-	// --- Логика Регистрации ---
-	private async handleRegister() {
-		const username = (
-			document.getElementById('regUser') as HTMLInputElement
-		).value.trim()
-		const password = (document.getElementById('regPass') as HTMLInputElement)
-			.value
-		const confirm = (
-			document.getElementById('regPassConfirm') as HTMLInputElement
-		).value
-
-		// 1. Client-side Validation
-		if (password.length < 6) {
-			this.showMessage('Password must be at least 6 characters', 'error')
+	private async checkSession() {
+		const token = localStorage.getItem('neuro_token')
+		if (!token) {
+			this.toggleOverlay(true)
 			return
 		}
-		if (password !== confirm) {
-			this.showMessage('Passwords do not match', 'error')
-			return
-		}
-
-		this.setLoading(true, 'regBtn')
 
 		try {
-			const res = await fetch(`${API_URL}/register`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ username, password }),
+			const res = await fetch(`${API_URL}/auth/verify`, {
+				headers: { Authorization: `Bearer ${token}` },
 			})
+			if (!res.ok) throw new Error('Token invalid')
 
 			const data = await res.json()
-
-			// Если сервер вернул ошибку (409 или 400), мы её ловим здесь
-			if (!res.ok) {
-				// data.error будет содержать "Пользователь с таким именем уже существует"
-				throw new Error(data.error || 'Registration failed')
-			}
-
-			// Успех...
-			this.showMessage(data.message, 'success')
-			// ...
-		} catch (err: any) {
-			// Здесь ошибка показывается в красном окошке
-			this.showMessage(err.message, 'error')
-		} finally {
-			this.setLoading(false, 'regBtn')
+			this.onLoginSuccess(token, data.user.username)
+			this.toggleOverlay(false)
+		} catch (e) {
+			this.logout(false)
 		}
 	}
 
-	// --- Логика Входа ---
 	private async handleLogin() {
 		const username = (
 			document.getElementById('loginUser') as HTMLInputElement
 		).value.trim()
 		const password = (document.getElementById('loginPass') as HTMLInputElement)
 			.value
-
 		this.setLoading(true, 'loginBtn')
 
 		try {
@@ -148,18 +101,13 @@ class AuthManager {
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ username, password }),
 			})
-
 			const data = await res.json()
+			if (!res.ok) throw new Error(data.error)
 
-			if (!res.ok) throw new Error(data.error || 'Login failed')
-
-			// Сохраняем токен
 			localStorage.setItem('neuro_token', data.token)
 			localStorage.setItem('neuro_username', data.username)
-
-			// Запускаем приложение
 			this.onLoginSuccess(data.token, data.username)
-			this.overlay.style.display = 'none'
+			this.toggleOverlay(false)
 		} catch (err: any) {
 			this.showMessage(err.message, 'error')
 		} finally {
@@ -167,38 +115,76 @@ class AuthManager {
 		}
 	}
 
-	// --- Утилиты ---
+	private async handleRegister() {
+		const usernameInput = document.getElementById('regUser') as HTMLInputElement
+		const passwordInput = document.getElementById('regPass') as HTMLInputElement
+		const confirmInput = document.getElementById(
+			'regPassConfirm'
+		) as HTMLInputElement
 
-	private checkSession() {
-		const token = localStorage.getItem('neuro_token')
-		const user = localStorage.getItem('neuro_username')
-		if (token && user) {
-			this.onLoginSuccess(token, user)
-			this.overlay.style.display = 'none'
-		} else {
-			this.overlay.style.display = 'flex'
+		const username = usernameInput.value.trim()
+		const password = passwordInput.value
+		const confirm = confirmInput.value
+
+		if (password.length < 6)
+			return this.showMessage('Min 6 chars password', 'error')
+		if (password !== confirm)
+			return this.showMessage('Passwords mismatch', 'error')
+
+		this.setLoading(true, 'regBtn')
+		try {
+			const res = await fetch(`${API_URL}/register`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ username, password }),
+			})
+			const data = await res.json()
+			if (!res.ok) throw new Error(data.error)
+
+			this.showMessage('Account created! Redirecting...', 'success')
+			setTimeout(() => {
+				this.toggleForms(true)
+				const loginUser = document.getElementById(
+					'loginUser'
+				) as HTMLInputElement
+				if (loginUser) {
+					loginUser.value = username
+					loginUser.focus()
+				}
+				passwordInput.value = ''
+				confirmInput.value = ''
+				this.showMessage('Please log in', 'success')
+			}, 1500)
+		} catch (err: any) {
+			this.showMessage(err.message, 'error')
+		} finally {
+			this.setLoading(false, 'regBtn')
 		}
 	}
 
-	public logout() {
+	public logout(reload: boolean = true) {
 		localStorage.removeItem('neuro_token')
 		localStorage.removeItem('neuro_username')
-		location.reload()
+		if (reload) location.reload()
+		else {
+			this.toggleForms(true)
+			this.toggleOverlay(true)
+		}
 	}
 
 	private toggleForms(showLogin: boolean) {
-		this.msgBox.className = 'd-none' // Скрыть сообщения
+		this.msgBox.classList.add('d-none')
 		if (showLogin) {
 			this.loginForm.classList.remove('d-none')
 			this.regForm.classList.add('d-none')
-			document.getElementById('authSubtitle')!.innerText =
-				'Login to your workspace'
 		} else {
 			this.loginForm.classList.add('d-none')
 			this.regForm.classList.remove('d-none')
-			document.getElementById('authSubtitle')!.innerText =
-				'Create a new account'
 		}
+	}
+
+	private toggleOverlay(show: boolean) {
+		this.overlay.style.display = show ? 'flex' : 'none'
 	}
 
 	private showMessage(msg: string, type: 'error' | 'success') {
@@ -213,7 +199,6 @@ class AuthManager {
 		const btn = document.getElementById(btnId) as HTMLButtonElement
 		const textSpan = btn.querySelector('.btn-text') as HTMLElement
 		const spinner = btn.querySelector('.spinner-border') as HTMLElement
-
 		btn.disabled = isLoading
 		if (isLoading) {
 			textSpan.classList.add('d-none')
@@ -225,17 +210,25 @@ class AuthManager {
 	}
 }
 
+// --- ОСНОВНОЙ КЛАСС ИНТЕРФЕЙСА (ЧАТ + ФАЙЛЫ) ---
 class NeuralInterface {
+	private token: string
+	private currentChatId: string | null = null
+	private isGenerating: boolean = false
+
+	// Элементы чата
 	private chatContainer: HTMLElement
 	private userInput: HTMLTextAreaElement
 	private sendBtn: HTMLButtonElement
+	private historyList: HTMLElement
+
+	// Элементы файлов
+	private searchInput: HTMLInputElement
 	private fileInput: HTMLInputElement
 	private fileListContainer: HTMLElement
-
-	private searchInput: HTMLInputElement
 	private filterTags: NodeListOf<HTMLElement>
 
-	// Хранилище данных о файлах (State)
+	// Состояние файлов
 	private filesData: Array<{
 		id: string
 		name: string
@@ -244,61 +237,39 @@ class NeuralInterface {
 	}> = []
 	private currentFilter: string = 'all'
 
-	private isGenerating: boolean = false
-
-	private token: string = ''
-
 	constructor(token: string, username: string) {
 		this.token = token
+
+		// UI Refs
 		this.chatContainer = document.getElementById('chatContainer') as HTMLElement
 		this.userInput = document.getElementById('userInput') as HTMLTextAreaElement
 		this.sendBtn = document.getElementById('sendBtn') as HTMLButtonElement
+		this.historyList = document.getElementById('historyList') as HTMLElement
+
+		this.searchInput = document.getElementById(
+			'fileSearchInput'
+		) as HTMLInputElement
 		this.fileInput = document.getElementById('fileInput') as HTMLInputElement
 		this.fileListContainer = document.getElementById(
 			'fileListContainer'
 		) as HTMLElement
-		this.searchInput = document.getElementById(
-			'fileSearchInput'
-		) as HTMLInputElement
 		this.filterTags = document.querySelectorAll('.filter-tag')
+
 		const userDisplay = document.getElementById('usernameDisplay')
 		if (userDisplay) userDisplay.innerText = username
 
-		this.initAuth()
-		this.initChat()
-		this.initFiles()
+		this.initListeners()
+		this.initFilesLogic() // Инициализация файлов
+		this.loadHistory() // Инициализация чатов
 	}
 
-	// --- 1. Fake Auth Logic ---
-	private initAuth() {
-		const authOverlay = document.getElementById('authOverlay')
-		const loginForm = document.getElementById('loginForm')
-
-		loginForm?.addEventListener('submit', e => {
+	private initListeners() {
+		document.querySelector('.new-chat-btn')?.addEventListener('click', e => {
 			e.preventDefault()
-			// Mock Login Success
-			if (authOverlay) {
-				authOverlay.style.opacity = '0'
-				setTimeout(() => authOverlay.remove(), 500)
-			}
+			this.startNewChat()
 		})
 
-		// Logout handler
-		document.getElementById('logoutBtn')?.addEventListener('click', () => {
-			location.reload()
-		})
-	}
-
-	// --- 2. Chat Logic ---
-	private initChat() {
-		// Auto-resize textarea
-		this.userInput.addEventListener('input', () => {
-			this.userInput.style.height = 'auto'
-			this.userInput.style.height =
-				Math.min(this.userInput.scrollHeight, 150) + 'px'
-		})
-
-		// Send on Enter
+		this.sendBtn.addEventListener('click', () => this.handleSend())
 		this.userInput.addEventListener('keydown', e => {
 			if (e.key === 'Enter' && !e.shiftKey) {
 				e.preventDefault()
@@ -306,140 +277,230 @@ class NeuralInterface {
 			}
 		})
 
-		this.sendBtn.addEventListener('click', () => this.handleSend())
+		this.userInput.addEventListener('input', () => {
+			this.userInput.style.height = 'auto'
+			this.userInput.style.height =
+				Math.min(this.userInput.scrollHeight, 150) + 'px'
+		})
+	}
+
+	// ==================
+	// 1. ЛОГИКА ЧАТОВ
+	// ==================
+
+	private async loadHistory() {
+		try {
+			const res = await fetch(`${API_URL}/chats`, {
+				headers: { Authorization: `Bearer ${this.token}` },
+			})
+			const chats = await res.json()
+			this.renderHistorySidebar(chats)
+		} catch (e) {
+			console.error(e)
+		}
+	}
+
+	private renderHistorySidebar(chats: any[]) {
+		this.historyList.innerHTML = `
+            <div class="small fw-bold px-3 mb-2 mt-3 text-uppercase" style="font-size: 0.75rem; letter-spacing: 0.5px;">
+                <i class="bi bi-chat-square-text me-2"></i>Recent chats
+            </div>
+        `
+		chats.forEach(chat => {
+			const a = document.createElement('a')
+			a.href = '#'
+			a.className = 'nav-item'
+			if (this.currentChatId == chat.id) a.classList.add('active')
+			a.innerHTML = `<i class="bi bi-chat-left"></i><span>${chat.title}</span>`
+			a.addEventListener('click', e => {
+				e.preventDefault()
+				this.loadChat(chat.id)
+			})
+			this.historyList.appendChild(a)
+		})
+	}
+
+	private async loadChat(chatId: string) {
+		this.currentChatId = chatId
+		this.loadHistory() // Обновить active класс
+		this.chatContainer.innerHTML = ''
+
+		try {
+			const res = await fetch(`${API_URL}/chats/${chatId}/messages`, {
+				headers: { Authorization: `Bearer ${this.token}` },
+			})
+			const messages = await res.json()
+			messages.forEach((msg: any) => {
+				this.appendMessage(
+					msg.role === 'user' ? 'You' : 'Neuro',
+					msg.content,
+					msg.role
+				)
+			})
+		} catch (e) {
+			console.error(e)
+		}
+	}
+
+	private startNewChat() {
+		this.currentChatId = null
+		this.chatContainer.innerHTML = ''
+		const welcome = document.createElement('div')
+		welcome.className = 'welcome-screen fade-in'
+		welcome.innerHTML = `
+            <div class="welcome-content">
+                <h1 class="display-font">How can I help you today?</h1>
+            </div>
+        `
+		this.chatContainer.appendChild(welcome)
+		this.loadHistory() // Снять выделение
 	}
 
 	private async handleSend() {
 		const text = this.userInput.value.trim()
 		if (!text || this.isGenerating) return
 
-		// Hide welcome screen if exists
-		const welcome = document.querySelector('.welcome-screen') as HTMLElement
-		if (welcome) welcome.style.display = 'none'
+		const welcome = document.querySelector('.welcome-screen')
+		if (welcome) welcome.remove()
 
-		// 1. Show User Message
 		this.appendMessage('You', text, 'user')
 		this.userInput.value = ''
-		this.userInput.style.height = 'auto'
 		this.isGenerating = true
 
-		// 2. Fake AI Thinking
-		await this.simulateAIResponse()
+		try {
+			if (!this.currentChatId) {
+				const title = text.slice(0, 30) + (text.length > 30 ? '...' : '')
+				const createRes = await fetch(`${API_URL}/chats`, {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+						Authorization: `Bearer ${this.token}`,
+					},
+					body: JSON.stringify({ title }),
+				})
+				const newChat = await createRes.json()
+				this.currentChatId = newChat.id
+				this.loadHistory()
+			}
+
+			const loadingMsg = this.appendMessage(
+				'Neuro',
+				'<span class="typing-dots">...</span>',
+				'ai'
+			)
+			const contentDiv = loadingMsg.querySelector(
+				'.message-content'
+			) as HTMLElement
+
+			const res = await fetch(`${API_URL}/chat/send`, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					Authorization: `Bearer ${this.token}`,
+				},
+				body: JSON.stringify({ chat_id: this.currentChatId, content: text }),
+			})
+
+			if (!res.ok) throw new Error('Error')
+			const data = await res.json()
+			await this.typeWriterEffect(contentDiv, data.content)
+		} catch (e) {
+			this.appendMessage('System', 'Error communicating with AI.', 'ai')
+		} finally {
+			this.isGenerating = false
+		}
 	}
 
-	private appendMessage(
-		name: string,
-		text: string,
-		role: 'user' | 'ai'
-	): HTMLElement {
+	private appendMessage(name: string, text: string, role: string) {
 		const wrapper = document.createElement('div')
 		wrapper.className = `message-wrapper ${role}`
+		const icon =
+			role === 'ai' ? '<i class="bi bi-stars text-accent me-2"></i>' : ''
+		wrapper.innerHTML = `<div class="message-role">${icon}${name}</div><div class="message-content">${this.formatText(
+			text
+		)}</div>`
+		this.chatContainer.appendChild(wrapper)
+		this.chatContainer.scrollTop = this.chatContainer.scrollHeight
+		return wrapper
+	}
 
-		let contentHtml = text.replace(/\n/g, '<br>')
-		// Simple code block detector for demo
-		if (contentHtml.includes('```')) {
-			contentHtml = contentHtml.replace(
+	private formatText(text: string): string {
+		let formatted = text.replace(/\n/g, '<br>')
+		if (formatted.includes('```')) {
+			formatted = formatted.replace(
 				/```([\s\S]*?)```/g,
 				'<div class="code-block">$1</div>'
 			)
 		}
-
-		const icon =
-			role === 'ai' ? '<i class="bi bi-stars text-accent me-2"></i>' : ''
-
-		wrapper.innerHTML = `
-            <div class="message-role">${icon}${name}</div>
-            <div class="message-content">${contentHtml}</div>
-        `
-
-		this.chatContainer.appendChild(wrapper)
-		this.chatContainer.scrollTop = this.chatContainer.scrollHeight
-		return wrapper.querySelector('.message-content') as HTMLElement
+		return formatted
 	}
 
-	private async simulateAIResponse() {
-		const responses = [
-			"I've analyzed the uploaded files. Based on the context, here is the refactored code:\n```javascript\nconst optimization = true;\n```",
-			"That's an interesting question. In the current interface configuration, the right sidebar manages the retrieval context.",
-			'I am ready to process your request. Please specify the parameters.',
-		]
-		const reply = responses[Math.floor(Math.random() * responses.length)]
+	// ==================
+	// 2. ЛОГИКА ФАЙЛОВ
+	// ==================
 
-		// Create empty AI message
-		const contentDiv = this.appendMessage('Neuro', '', 'ai')
-
-		// Typewriter effect
-		let i = 0
-		const interval = setInterval(() => {
-			contentDiv.innerHTML +=
-				reply.charAt(i) === '\n' ? '<br>' : reply.charAt(i)
-			this.chatContainer.scrollTop = this.chatContainer.scrollHeight
-			i++
-			if (i >= reply.length) {
-				clearInterval(interval)
-				this.isGenerating = false
-				// Fix code block rendering after typing
-				if (contentDiv.innerHTML.includes('```')) {
-					contentDiv.innerHTML = contentDiv.innerHTML.replace(
-						/```([\s\S]*?)```/g,
-						'<div class="code-block">$1</div>'
-					)
-				}
-			}
-		}, 20)
-	}
-
-	private async loadFilesFromServer() {
-		try {
-			const token = localStorage.getItem('neuro_token')
-			const res = await fetch(`${API_URL}/files`, {
-				headers: { Authorization: `Bearer ${token}` },
-			})
-			const files = await res.json()
-
-			this.filesData = [] // Очищаем старые/демо данные
-
-			// Заполняем данными из БД
-			files.forEach((f: any) => {
-				this.addFileToState(f.id, f.name, f.size, f.type)
-			})
-		} catch (e) {
-			console.error('Error loading files:', e)
-		}
-	}
-
-	// --- 3. Files Logic (Updated with Renaming) ---
-	private initFiles() {
-		// Добавляем демо-данные
-
+	private initFilesLogic() {
 		this.loadFilesFromServer()
 
-		// 1. Обработка загрузки файла
+		// 1. Загрузка файла
 		this.fileInput.addEventListener('change', () => {
 			if (this.fileInput.files && this.fileInput.files.length > 0) {
-				const file = this.fileInput.files[0]
-				// Вместо addFileToState вызываем uploadFile
-				this.uploadFile(file)
+				this.uploadFile(this.fileInput.files[0])
 			}
 		})
 
-		// 2. Обработка поиска (фильтрация при вводе)
+		// 2. ПОИСК: При вводе текста перерисовываем список
 		this.searchInput.addEventListener('input', () => {
 			this.renderFiles()
 		})
 
-		// 3. Обработка клика по фильтрам
+		// 3. ФИЛЬТРЫ: При клике на тег перерисовываем список
 		this.filterTags.forEach(tag => {
 			tag.addEventListener('click', () => {
-				// Смена активного класса
 				this.filterTags.forEach(t => t.classList.remove('active'))
 				tag.classList.add('active')
 
-				// Обновление фильтра
 				this.currentFilter = tag.getAttribute('data-type') || 'all'
 				this.renderFiles()
 			})
 		})
+	}
+
+	private async loadFilesFromServer() {
+		try {
+			const res = await fetch(`${API_URL}/files`, {
+				headers: { Authorization: `Bearer ${this.token}` },
+			})
+			const files = await res.json()
+			this.filesData = []
+			files.forEach((f: any) => {
+				this.addFileToState(f.id, f.name, f.size, f.type)
+			})
+		} catch (e) {
+			console.error(e)
+		}
+	}
+
+	private async uploadFile(file: File) {
+		const formData = new FormData()
+		formData.append('file', file)
+		this.fileInput.disabled = true
+
+		try {
+			const res = await fetch(`${API_URL}/files`, {
+				method: 'POST',
+				headers: { Authorization: `Bearer ${this.token}` },
+				body: formData,
+			})
+			if (!res.ok) throw new Error('Upload failed')
+			const data = await res.json()
+			this.addFileToState(data.id, data.name, data.size, data.type)
+		} catch (e) {
+			alert('Error uploading file')
+		} finally {
+			this.fileInput.value = ''
+			this.fileInput.disabled = false
+		}
 	}
 
 	private addFileToState(
@@ -448,95 +509,104 @@ class NeuralInterface {
 		size: number,
 		type?: string
 	) {
-		// Если тип не передан, пытаемся определить по расширению
 		if (!type) {
 			const ext = name.split('.').pop()?.toLowerCase() || 'unknown'
 			type = this.mapExtensionToType(ext)
 		}
-
-		const newFile = {
-			id: id.toString(), // Приводим к строке для единообразия в JS
-			name: name,
-			size: size,
-			type: type,
-		}
-
-		this.filesData.unshift(newFile)
+		this.filesData.unshift({ id: id.toString(), name, size, type })
 		this.renderFiles()
-	}
-
-	private async uploadFile(file: File) {
-		const formData = new FormData()
-		formData.append('file', file)
-
-		// Показываем какой-то индикатор загрузки (опционально)
-		// Но пока просто заблокируем инпут
-		this.fileInput.disabled = true
-
-		try {
-			const token = localStorage.getItem('neuro_token')
-			const res = await fetch(`${API_URL}/files`, {
-				method: 'POST',
-				headers: {
-					Authorization: `Bearer ${token}`,
-					// Content-Type не нужен, браузер сам поставит multipart/form-data
-				},
-				body: formData,
-			})
-
-			if (!res.ok) throw new Error('Upload failed')
-
-			const data = await res.json()
-
-			// ВАЖНО: Добавляем файл в стейт, используя ID из базы данных (data.id)
-			this.addFileToState(data.id, data.name, data.size, data.type)
-		} catch (e) {
-			console.error(e)
-			alert('Ошибка загрузки файла')
-		} finally {
-			this.fileInput.value = '' // Сброс инпута
-			this.fileInput.disabled = false
-		}
 	}
 
 	private mapExtensionToType(ext: string): string {
 		if (['jpg', 'jpeg', 'png', 'svg', 'webp'].includes(ext)) return 'img'
 		if (['doc', 'docx'].includes(ext)) return 'docx'
-		return ext // pdf, txt, etc.
+		if (['pdf'].includes(ext)) return 'pdf'
+		return 'txt'
+	}
+
+	private async typeWriterEffect(element: HTMLElement, rawText: string) {
+		// Сначала форматируем текст (превращаем \n в <br>, markdown в html)
+		const formatted = this.formatText(rawText)
+
+		// Очищаем "..." (индикатор загрузки)
+		element.innerHTML = ''
+
+		let i = 0
+		const speed = 15 // Скорость печати (мс на символ)
+
+		return new Promise<void>(resolve => {
+			const interval = setInterval(() => {
+				// Если мы дошли до конца
+				if (i >= formatted.length) {
+					clearInterval(interval)
+					resolve()
+					return
+				}
+
+				const char = formatted.charAt(i)
+
+				// Если встретили начало HTML-тега, например <br> или <div>
+				if (char === '<') {
+					const endIndex = formatted.indexOf('>', i)
+					if (endIndex !== -1) {
+						// Вставляем весь тег целиком сразу
+						element.innerHTML += formatted.substring(i, endIndex + 1)
+						i = endIndex + 1 // Перепрыгиваем индекс
+					} else {
+						// Если тег сломан, печатаем как есть
+						element.innerHTML += char
+						i++
+					}
+				} else {
+					// Обычный символ
+					element.innerHTML += char
+					i++
+				}
+
+				// Прокрутка вниз при печати
+				this.chatContainer.scrollTop = this.chatContainer.scrollHeight
+			}, speed)
+		})
 	}
 
 	private renderFiles() {
-		this.fileListContainer.innerHTML = '' // Очищаем список
-		const searchTerm = this.searchInput.value.toLowerCase()
+		this.fileListContainer.innerHTML = ''
 
-		// Фильтрация
-		const filteredFiles = this.filesData.filter(file => {
-			const matchesSearch = file.name.toLowerCase().includes(searchTerm)
-			const matchesType =
-				this.currentFilter === 'all' || file.type === this.currentFilter
-			return matchesSearch && matchesType
+		// 1. Получаем текст поиска (в нижнем регистре для нечувствительности к регистру)
+		const searchTerm = this.searchInput.value.toLowerCase().trim()
+
+		// 2. Фильтруем массив данных
+		const filtered = this.filesData.filter(f => {
+			// Условие 1: Имя файла содержит текст поиска
+			const matchSearch = f.name.toLowerCase().includes(searchTerm)
+
+			// Условие 2: Тип файла совпадает с выбранным фильтром (или выбрано ALL)
+			const matchType =
+				this.currentFilter === 'all' || f.type === this.currentFilter
+
+			// Файл должен соответствовать ОБОИМ условиям
+			return matchSearch && matchType
 		})
 
-		if (filteredFiles.length === 0) {
-			this.fileListContainer.innerHTML = `
-                <div class="text-muted text-center mt-3 small" style="font-size: 0.75rem;">
-                    No files found
-                </div>`
+		// 3. Если ничего не найдено
+		if (filtered.length === 0) {
+			// Если поиск пустой, но файлов нет вообще
+			if (this.filesData.length === 0) {
+				this.fileListContainer.innerHTML = `<div class="text-muted text-center mt-3 small">No uploaded files</div>`
+			} else {
+				// Если файлы есть, но поиск не дал результатов
+				this.fileListContainer.innerHTML = `<div class="text-muted text-center mt-3 small">No matches found</div>`
+			}
 			return
 		}
 
-		// Отрисовка
-		filteredFiles.forEach(file => {
-			const domElement = this.createFileDOM(file)
-			this.fileListContainer.appendChild(domElement)
+		// 4. Отрисовка найденного
+		filtered.forEach(file => {
+			this.fileListContainer.appendChild(this.createFileDOM(file))
 		})
 	}
 
-	private createFileDOM(file: {
-		id: string
-		name: string
-		size: number
-	}): HTMLElement {
+	private createFileDOM(file: { id: string; name: string; size: number }) {
 		const sizeStr =
 			file.size < 1024 * 1024
 				? (file.size / 1024).toFixed(1) + ' KB'
@@ -551,18 +621,27 @@ class NeuralInterface {
                 <span class="file-size">${sizeStr}</span>
             </div>
             <div class="file-actions">
-                <button class="action-btn edit" title="Rename"><i class="bi bi-pencil"></i></button>
-                <button class="action-btn delete" title="Delete"><i class="bi bi-x"></i></button>
+                <button class="action-btn edit"><i class="bi bi-pencil"></i></button>
+                <button class="action-btn delete"><i class="bi bi-x"></i></button>
             </div>
         `
 
-		// Логика удаления (удаляем из массива и перерисовываем)
-		div.querySelector('.delete')?.addEventListener('click', () => {
-			this.filesData = this.filesData.filter(f => f.id !== file.id)
-			this.renderFiles()
+		// Удаление
+		div.querySelector('.delete')?.addEventListener('click', async () => {
+			if (!confirm('Delete file?')) return
+			try {
+				await fetch(`${API_URL}/files/${file.id}`, {
+					method: 'DELETE',
+					headers: { Authorization: `Bearer ${this.token}` },
+				})
+				this.filesData = this.filesData.filter(f => f.id !== file.id)
+				this.renderFiles()
+			} catch (e) {
+				alert('Error deleting')
+			}
 		})
 
-		// Логика переименования (из прошлого ответа)
+		// Переименование
 		const editBtn = div.querySelector('.edit') as HTMLButtonElement
 		const nameSpan = div.querySelector('.file-name') as HTMLElement
 		const fileInfoDiv = div.querySelector('.file-info') as HTMLElement
@@ -580,50 +659,32 @@ class NeuralInterface {
 
 			const saveName = async () => {
 				const newName = input.value.trim()
-				const currentName = nameSpan.innerText
-
-				// Если имя не изменилось или пустое — просто отменяем
 				if (!newName || newName === currentName) {
 					input.remove()
 					nameSpan.style.display = 'block'
 					return
 				}
-
-				// Блокируем инпут пока идет запрос
 				input.disabled = true
-
 				try {
-					// Отправляем запрос на сервер
-					const token = localStorage.getItem('neuro_token')
 					const res = await fetch(`${API_URL}/files/${file.id}`, {
 						method: 'PUT',
 						headers: {
 							'Content-Type': 'application/json',
-							Authorization: `Bearer ${token}`,
+							Authorization: `Bearer ${this.token}`,
 						},
 						body: JSON.stringify({ name: newName }),
 					})
+					if (!res.ok) throw new Error()
 
-					if (!res.ok) {
-						const errData = await res.json()
-						throw new Error(errData.error || 'Failed to rename')
-					}
+					const target = this.filesData.find(f => f.id === file.id)
+					if (target) target.name = newName
 
-					// 1. Обновляем данные в локальном стейте (массиве)
-					const targetFile = this.filesData.find(f => f.id === file.id)
-					if (targetFile) targetFile.name = newName
-
-					// 2. Обновляем UI
 					nameSpan.innerText = newName
 					nameSpan.title = newName
-				} catch (err: any) {
-					console.error(err)
-					alert(`Ошибка: ${err.message}`)
-					// Возвращаем старое имя при ошибке
-					input.value = currentName
+				} catch (e) {
+					alert('Error renaming')
 					nameSpan.innerText = currentName
 				} finally {
-					// Убираем инпут и показываем текст
 					input.remove()
 					nameSpan.style.display = 'block'
 				}
@@ -631,18 +692,10 @@ class NeuralInterface {
 
 			input.addEventListener('keydown', e => {
 				if (e.key === 'Enter') saveName()
-				// По Esc отменяем редактирование
 				if (e.key === 'Escape') {
 					input.remove()
 					nameSpan.style.display = 'block'
 				}
-			})
-
-			// blur запускает сохранение, когда кликаем вне поля
-			input.addEventListener('blur', () => saveName())
-
-			input.addEventListener('keydown', e => {
-				if (e.key === 'Enter') saveName()
 			})
 			input.addEventListener('blur', () => saveName())
 		})
@@ -651,9 +704,7 @@ class NeuralInterface {
 	}
 }
 
-// Start Application
-// new NeuralInterface()
-
+// Запуск
 new AuthManager((token, username) => {
 	new NeuralInterface(token, username)
 })
