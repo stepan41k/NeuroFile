@@ -370,26 +370,46 @@ app.post('/api/chat/send', authenticateToken, async (req, res) => {
 			[chat_id, 'user', content]
 		)
 
-		// 2. Собираем контекст для AI
+		// 2. Собираем данные
 
-		// а) История сообщений текущего чата (чтобы AI помнил контекст разговора)
+		// а) История переписки
 		const historyRes = await pool.query(
 			'SELECT role, content FROM messages WHERE chat_id = $1 ORDER BY timestamp ASC',
 			[chat_id]
 		)
-		const history = historyRes.rows
+		const rawHistory = historyRes.rows
 
-		// б) Список файлов пользователя (чтобы AI знал, какие документы загружены)
+		// б) Список файлов пользователя
 		const filesRes = await pool.query(
-			'SELECT original_name, type, size FROM files WHERE user_id = $1',
+			'SELECT original_name FROM files WHERE user_id = $1',
 			[userId]
 		)
-		const files = filesRes.rows
+		const filesList = filesRes.rows.map(f => f.original_name).join(', ')
 
-		// 3. Отправляем запрос к Python AI Service
-		// AI_SERVICE_URL берется из .env или docker-compose (обычно http://ai-agent:5000/predict)
+		// 3. Формируем payload строго по схеме ChatRequest
+
+		// Формируем системное сообщение с контекстом файлов
+		// Так как в ChatRequest нет поля files_context, передаем инфо в system message
+		const systemMessage = {
+			role: 'system',
+			message: filesList
+				? `You have access to the following files: ${filesList}. Use them to answer user questions.`
+				: 'You are a helpful assistant.',
+		}
+
+		// Преобразуем историю из формата БД (role='ai') в формат API (role='assistant')
+		const formattedHistory = rawHistory.map(msg => ({
+			role: msg.role === 'ai' ? 'assistant' : 'user', // Важно: Pydantic ждет 'assistant'
+			message: msg.content,
+		}))
+
+		// Собираем итоговый массив chat
+		// Порядок: System -> History -> (User message уже есть в history, так как мы его сохранили на шаге 1)
+		const chatPayload = [systemMessage, ...formattedHistory]
+
+		// 4. Отправляем запрос к Python AI Service
 		const aiServiceUrl =
-			process.env.AI_SERVICE_URL || 'http://localhost:5000/predict'
+			process.env.AI_SERVICE_URL || 'http://ai-agent:3001/chat/answer'
 
 		let aiText = ''
 
@@ -398,30 +418,43 @@ app.post('/api/chat/send', authenticateToken, async (req, res) => {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
-					text: content,
-					history: history,
-					files_context: files,
+					chat: chatPayload, // Соответствует class ChatRequest
 				}),
 			})
 
 			if (!aiResponse.ok) {
-				throw new Error(`AI Service status: ${aiResponse.status}`)
+				const errText = await aiResponse.text()
+				throw new Error(`AI Service error: ${aiResponse.status} - ${errText}`)
 			}
 
+			// 5. Парсим ответ согласно class ChatAnswerResponse
 			const aiData = await aiResponse.json()
-			aiText = aiData.result
+
+			// Структура ответа: { chat: [ { role: 'assistant', message: '...', files_used: [...] } ] }
+			// Берем последнее сообщение из списка chat
+			if (aiData.chat && aiData.chat.length > 0) {
+				const lastMessage = aiData.chat[aiData.chat.length - 1]
+				aiText = lastMessage.message
+
+				// (Опционально) Можно залогировать, какие файлы использовались
+				if (lastMessage.files_used && lastMessage.files_used.length > 0) {
+					console.log('AI used files:', lastMessage.files_used)
+				}
+			} else {
+				aiText = 'Error: Empty response from AI agent.'
+			}
 		} catch (aiErr) {
-			console.error('AI Connection Error:', aiErr.message)
-			aiText = 'Error: Could not connect to AI Agent. Please try again later.'
+			console.error('AI Connection Error:', aiErr)
+			aiText = 'Error: Could not connect to AI Agent.'
 		}
 
-		// 4. Сохраняем ответ AI в БД
+		// 6. Сохраняем ответ AI в БД
 		await pool.query(
 			'INSERT INTO messages (chat_id, role, content) VALUES ($1, $2, $3)',
 			[chat_id, 'ai', aiText]
 		)
 
-		// 5. Возвращаем ответ фронтенду
+		// 7. Возвращаем ответ фронтенду
 		res.json({ role: 'ai', content: aiText })
 	} catch (err) {
 		console.error('Chat Error:', err)
@@ -486,6 +519,8 @@ app.get('/api/chats/:id/messages', authenticateToken, async (req, res) => {
 })
 
 // Запуск
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
 	console.log(`Server running on port ${PORT}`)
 })
+
+server.setTimeout(300000)
