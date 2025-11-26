@@ -47,5 +47,16 @@ services:
     depends_on:
       - server
 
+  ai-agent:
+    build:
+      context: ../ai-agent/
+    container_name: ai_agent
+    restart: always
+    ports:
+      - "3001:3001"
+    depends_on:
+        - db
+        - server
+        - client
 volumes:
   postgres_data:
