@@ -1,10 +1,9 @@
 import csv
-import os
 import time
 from pathlib import Path
 import torch
-from SystemSearch import SearchSystem
-from Models import Reranker, LLM
+from object.SystemSearch import SearchSystem
+from object.Models import Reranker, LLM
 
 # =========================== НАСТРОЙКИ ===========================
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"

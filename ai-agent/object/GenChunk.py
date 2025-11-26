@@ -2,6 +2,12 @@ import hashlib
 import nltk
 from nltk.tokenize import sent_tokenize, word_tokenize
 
+def add_source_and_id(chanks, source):
+    for id in range(len(chanks)):
+        chanks[id]["source"] = source
+        chanks[id]["chunkID"] = id
+    return chanks
+
 nltk.download("punkt", quiet=True)
 
 def hash_text(text: str) -> str:

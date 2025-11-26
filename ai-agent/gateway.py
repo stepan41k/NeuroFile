@@ -1,22 +1,25 @@
 import os
-import shutil
-import tempfile
-import time
-from typing import Literal, List
-
 import torch
+import shutil
+import time
+# FastAPI
+from typing import Literal, List
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from pathlib import Path
-from SystemSearch import SearchSystem
-from LoadDOCX import parse_docx
-from LoadPDF import parse_pdf
-from LoadDOC_RTF import parse_doc_or_rtf
-from GenChunk import normalize_pre_chank, add_source_and_id
-from Models import Reranker, LLM
+# Парсинг документов
+from object.LoadDOCX import parse_docx
+from object.LoadPDF import parse_pdf
+from object.LoadDOC_RTF import parse_doc_or_rtf
+# Генерация чанков полсе парсинга
+from object.GenChunk_old import normalize_pre_chank, add_source_and_id
+# Модели
+from object.SystemSearch import SearchSystem
+from object.Models import Reranker, LLM
 
-app = FastAPI()  # <- обязательно до декораторов
+
+app = FastAPI()
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -27,16 +30,15 @@ RERANKER = Reranker(device=DEVICE)
 LLM = LLM(device=DEVICE)
 
 
-folder = Path("dataset")
-folderTMP = Path("inputTMP")
-folder.mkdir(exist_ok=True)
+tmp_folder = Path("inputTMP")
+tmp_folder.mkdir(exist_ok=True)
 
 
 def save_temp_file(upload: UploadFile) -> Path:
     # Создаём папку, если её нет
-    folderTMP.mkdir(parents=True, exist_ok=True)
+    tmp_folder.mkdir(parents=True, exist_ok=True)
 
-    tmp_path = folderTMP / upload.filename
+    tmp_path = tmp_folder / upload.filename
     with tmp_path.open("wb") as f:
         shutil.copyfileobj(upload.file, f)
 
