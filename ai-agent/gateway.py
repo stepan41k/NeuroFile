@@ -169,10 +169,13 @@ def smart_search_chunk(searchSystem: SearchSystem, reranker: Reranker, question:
 
 # Объекты
 # Создаём Pydantic модель для ответа
-class ChatAnswerResponse(BaseModel):
-    answer: str
+class ChatAnswer(BaseModel):
+    role: Literal["assistant"]
+    message: str
     files_used: List[str]
 
+class ChatAnswerResponse(BaseModel):
+    chat: List[ChatAnswer]
 
 class ChatMessage(BaseModel):
     role: Literal["system", "user", "assistant"]
@@ -260,7 +263,9 @@ def chat_answer(req: ChatRequest):
 
     # Возврат через BaseModel + JSONResponse
     response_data = ChatAnswerResponse(
-        answer=answer,
-        files_used=list(source_chunks),
+        chat=[ChatAnswer(
+            role="assistant",
+            message=answer,
+            files_used=list(source_chunks))],
     )
     return response_data
