@@ -77,7 +77,7 @@ class LLM:
         self.model = AutoModelForCausalLM.from_pretrained(model).to(device)
         self.device = device
 
-    def generate_answer(self, chat_history, question, context_docs):
+    def generate_answer(self, chat_history, question, context_text):
         # Преобразуем ключи, если нужно
         for msg in chat_history:
             if "message" in msg:
@@ -87,15 +87,10 @@ class LLM:
         chat_history.append({"role": "user", "content": question})
 
         # Формируем временные сообщения для модели
-        messages_for_model = [
-            {"role": "system", "content": "Используя только предоставленный контекст из документов, "
-                                          "дай краткий и точный ответ на вопрос пользователя. "
-                                          "Если контекст не содержит ответа — сообщи об этом."}
-        ]
-
-        if context_docs:
-            context_text = "\n\n".join([doc["text"] for doc in context_docs])
-            messages_for_model.append({"role": "system", "content": f"Контекст документов:\n{context_text}"})
+        messages_for_model = [{"role": "system", "content": "Используя только предоставленный контекст из документов, "
+                                                            "дай краткий и точный ответ на вопрос пользователя. "
+                                                            "Если контекст не содержит ответа — сообщи об этом."},
+                              {"role": "system", "content": f"Контекст документов:\n{context_text}"}]
 
         # Добавляем историю чата (вопросы и ответы) + текущий вопрос
         messages_for_model.extend(chat_history)

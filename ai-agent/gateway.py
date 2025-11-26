@@ -240,7 +240,7 @@ def chat_answer(req: ChatRequest):
     #         "texts": list(texts_sorted)
     #     })
     # -------------------------------------------------------------------- Объеденяем чанки по source
-
+    print(top_k_chunks)
     # Генерация отвера по чанкам
     context = ""
     source_chunks = set()
