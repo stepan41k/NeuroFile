@@ -43,7 +43,7 @@ const initDB = async () => {
 	let retries = 5
 	while (retries) {
 		try {
-			await pool.query('SELECT NOW()') // Проверка связи
+			await pool.query('SELECT NOW()')
 			console.log('Connected to PostgreSQL successfully')
 			break
 		} catch (err) {
@@ -54,7 +54,7 @@ const initDB = async () => {
 	}
 
 	try {
-		// Таблица пользователей
+		// 1. Таблица Users
 		await pool.query(`
             CREATE TABLE IF NOT EXISTS users (
                 id SERIAL PRIMARY KEY,
@@ -63,7 +63,7 @@ const initDB = async () => {
             );
         `)
 
-		// Таблица файлов
+		// 2. Таблица Files
 		await pool.query(`
             CREATE TABLE IF NOT EXISTS files (
                 id SERIAL PRIMARY KEY,
@@ -76,7 +76,29 @@ const initDB = async () => {
                 uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         `)
-		console.log('Tables initialized')
+
+		// 3. Таблица Chats (НОВОЕ)
+		await pool.query(`
+            CREATE TABLE IF NOT EXISTS chats (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                title TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        `)
+
+		// 4. Таблица Messages (НОВОЕ)
+		await pool.query(`
+            CREATE TABLE IF NOT EXISTS messages (
+                id SERIAL PRIMARY KEY,
+                chat_id INTEGER REFERENCES chats(id) ON DELETE CASCADE,
+                role TEXT,
+                content TEXT,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        `)
+
+		console.log('Tables initialized (Users, Files, Chats, Messages)')
 	} catch (err) {
 		console.error('Error initializing tables:', err)
 	}
@@ -173,6 +195,17 @@ app.post('/api/login', async (req, res) => {
 		console.error(err)
 		res.status(500).send()
 	}
+})
+
+app.get('/api/auth/verify', authenticateToken, (req, res) => {
+	// Если мы попали сюда, значит токен валиден и юзер существует
+	res.json({
+		status: 'valid',
+		user: {
+			id: req.user.id,
+			username: req.user.username,
+		},
+	})
 })
 
 // 3. Загрузка файла
@@ -318,6 +351,137 @@ app.post('/api/register', async (req, res) => {
 		}
 		console.error(err)
 		res.status(500).json({ error: 'Ошибка сервера' })
+	}
+})
+
+// chats
+app.post('/api/chat/send', authenticateToken, async (req, res) => {
+	const { chat_id, content } = req.body
+	const userId = req.user.id
+
+	if (!chat_id || !content) {
+		return res.status(400).json({ error: 'Missing chat_id or content' })
+	}
+
+	try {
+		// 1. Сохраняем сообщение пользователя в БД
+		await pool.query(
+			'INSERT INTO messages (chat_id, role, content) VALUES ($1, $2, $3)',
+			[chat_id, 'user', content]
+		)
+
+		// 2. Собираем контекст для AI
+
+		// а) История сообщений текущего чата (чтобы AI помнил контекст разговора)
+		const historyRes = await pool.query(
+			'SELECT role, content FROM messages WHERE chat_id = $1 ORDER BY timestamp ASC',
+			[chat_id]
+		)
+		const history = historyRes.rows
+
+		// б) Список файлов пользователя (чтобы AI знал, какие документы загружены)
+		const filesRes = await pool.query(
+			'SELECT original_name, type, size FROM files WHERE user_id = $1',
+			[userId]
+		)
+		const files = filesRes.rows
+
+		// 3. Отправляем запрос к Python AI Service
+		// AI_SERVICE_URL берется из .env или docker-compose (обычно http://ai-agent:5000/predict)
+		const aiServiceUrl =
+			process.env.AI_SERVICE_URL || 'http://localhost:5000/predict'
+
+		let aiText = ''
+
+		try {
+			const aiResponse = await fetch(aiServiceUrl, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					text: content,
+					history: history,
+					files_context: files,
+				}),
+			})
+
+			if (!aiResponse.ok) {
+				throw new Error(`AI Service status: ${aiResponse.status}`)
+			}
+
+			const aiData = await aiResponse.json()
+			aiText = aiData.result
+		} catch (aiErr) {
+			console.error('AI Connection Error:', aiErr.message)
+			aiText = 'Error: Could not connect to AI Agent. Please try again later.'
+		}
+
+		// 4. Сохраняем ответ AI в БД
+		await pool.query(
+			'INSERT INTO messages (chat_id, role, content) VALUES ($1, $2, $3)',
+			[chat_id, 'ai', aiText]
+		)
+
+		// 5. Возвращаем ответ фронтенду
+		res.json({ role: 'ai', content: aiText })
+	} catch (err) {
+		console.error('Chat Error:', err)
+		res.status(500).json({ error: 'Internal Server Error' })
+	}
+})
+
+app.get('/api/chats', authenticateToken, async (req, res) => {
+	try {
+		const result = await pool.query(
+			'SELECT id, title, created_at FROM chats WHERE user_id = $1 ORDER BY created_at DESC',
+			[req.user.id]
+		)
+		res.json(result.rows)
+	} catch (err) {
+		console.error(err)
+		res.status(500).json({ error: 'Db error' })
+	}
+})
+
+// 2. Создать новый чат
+app.post('/api/chats', authenticateToken, async (req, res) => {
+	const { title } = req.body
+	// Если заголовок не передали, назовем "New Chat"
+	const chatTitle = title || 'New Chat'
+
+	try {
+		const result = await pool.query(
+			'INSERT INTO chats (user_id, title) VALUES ($1, $2) RETURNING id, title',
+			[req.user.id, chatTitle]
+		)
+		res.json(result.rows[0])
+	} catch (err) {
+		console.error(err)
+		res.status(500).json({ error: 'Db error' })
+	}
+})
+
+// 3. Получить сообщения конкретного чата
+app.get('/api/chats/:id/messages', authenticateToken, async (req, res) => {
+	const chatId = req.params.id
+	try {
+		// Проверка прав: принадлежит ли чат юзеру?
+		const chatCheck = await pool.query(
+			'SELECT id FROM chats WHERE id = $1 AND user_id = $2',
+			[chatId, req.user.id]
+		)
+
+		if (chatCheck.rows.length === 0) {
+			return res.status(403).json({ error: 'Access denied' })
+		}
+
+		const msgs = await pool.query(
+			'SELECT role, content, timestamp FROM messages WHERE chat_id = $1 ORDER BY timestamp ASC',
+			[chatId]
+		)
+		res.json(msgs.rows)
+	} catch (err) {
+		console.error(err)
+		res.status(500).json({ error: 'Db error' })
 	}
 })
 
