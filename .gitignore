@@ -1,4 +1,6 @@
 .DS_Store
 ai-agent/SearchStartData
 ai-agent/model
-ai-agent/d
+ai-agent/dataset
+ai-agent/test_file
+.idea

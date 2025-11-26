@@ -59,14 +59,14 @@ def main():
 
     # =========================== ЧТЕНИЕ ВОПРОСОВ ===========================
     print("4/4 Чтение input.csv...")
-    input_path = Path("input.csv")
+    input_path = Path("test_file/input.csv")
     if not input_path.exists():
         return
 
     # ============================== ОБРАБОТКА ===============================
     start_processing = time.time()
     total_questions = 0
-    with open("input.csv", newline="", encoding="utf-8") as f_in, \
+    with open("test_file/input.csv", newline="", encoding="utf-8") as f_in, \
          open("output.csv", "w", newline="", encoding="utf-8") as f_out:
 
         reader = csv.DictReader(f_in)
