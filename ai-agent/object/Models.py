@@ -77,23 +77,58 @@ class LLM:
         self.model = AutoModelForCausalLM.from_pretrained(model).to(device)
         self.device = device
 
-    def generate_answer(self, question, context):
-        prompt = (
-            f"{SYSTEM_PROMPT}\n\n"
-            f"Контекст:\n{context}\n\n"
-            f"Вопрос: {question}\nОтвет:"
+    def generate_answer(self, chat_history, question, context_docs):
+        # Преобразуем ключи, если нужно
+        for msg in chat_history:
+            if "message" in msg:
+                msg["content"] = msg.pop("message")
+
+        # Добавляем вопрос пользователя в историю
+        chat_history.append({"role": "user", "content": question})
+
+        # Формируем временные сообщения для модели
+        messages_for_model = [
+            {"role": "system", "content": "Используя только предоставленный контекст из документов, "
+                                          "дай краткий и точный ответ на вопрос пользователя. "
+                                          "Если контекст не содержит ответа — сообщи об этом."}
+        ]
+
+        if context_docs:
+            context_text = "\n\n".join([doc["text"] for doc in context_docs])
+            messages_for_model.append({"role": "system", "content": f"Контекст документов:\n{context_text}"})
+
+        # Добавляем историю чата (вопросы и ответы) + текущий вопрос
+        messages_for_model.extend(chat_history)
+
+        # Применяем шаблон
+        text = self.tokenizer.apply_chat_template(
+            messages_for_model,
+            tokenize=False,
+            add_generation_prompt=True
         )
 
-        inputs = self.tokenizer(prompt, return_tensors="pt", padding=True, truncation=True).to(self.device)
+        # Токенизация
+        model_inputs = self.tokenizer([text], return_tensors="pt").to(self.device)
 
-        output = self.model.generate(
-            **inputs,
-            max_new_tokens=200,
+        # Генерация
+        generated_ids = self.model.generate(
+            **model_inputs,
+            max_new_tokens=512,
             do_sample=False,
             temperature=1.0,
             eos_token_id=self.tokenizer.eos_token_id,
             pad_token_id=self.tokenizer.eos_token_id
         )
 
-        decoded = self.tokenizer.decode(output[0], skip_special_tokens=True)
-        return decoded.split("Ответ:", 1)[-1].strip()
+        # Обрезаем токены, которые были в prompt, оставляем только новые
+        generated_ids = [
+            output_ids[len(input_ids):] for input_ids, output_ids in zip(model_inputs.input_ids, generated_ids)
+        ]
+
+        # Декодируем
+        response = self.tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0].strip()
+
+        # Сохраняем ответ модели в историю
+        chat_history.append({"role": "assistant", "content": response})
+
+        return response

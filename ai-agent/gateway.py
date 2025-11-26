@@ -175,8 +175,8 @@ class ChatAnswerResponse(BaseModel):
 
 
 class ChatMessage(BaseModel):
-    user: Literal["system", "user"]
-    content: str
+    role: Literal["system", "user", "assistant"]
+    message: str
 
 class ChatRequest(BaseModel):
     chat: List[ChatMessage]
@@ -187,10 +187,12 @@ def chat_answer(req: ChatRequest):
     start_total = time.time()
 
     # Получаем последний вопрос пользователя
-    question = req.chat[-1].content
+    question = req.chat[-1].message
 
     # Нахождение нужных чанков
+    search_chunk_with_context = time.time()
     top_k_chunks = smart_search_chunk(DB_SEARCH, RERANKER, question)
+    search_chunk_with_context = time.time() - search_chunk_with_context
 
     # -------------------------------------------------------------------- Объеденяем чанки по source
     # merged_source = {}
@@ -245,11 +247,17 @@ def chat_answer(req: ChatRequest):
             context = context + chunk + '\n'
         context = context + "\n---\n"
 
+    llm_time = time.time()
     # ====== Генерация ответа ======
-    answer = LLM.generate_answer(question, context)
+    answer = LLM.generate_answer([msg.dict() for msg in req.chat], question, context)
+    llm_time = time.time() - llm_time
 
     total_time = time.time() - start_total
-    print(f"Общее время:         {total_time:.1f} сек")
+    print(f"Поиска чанков и контекста(RAG + BM25) время:         {search_chunk_with_context:.1f} сек")
+    # print(f"RAG + BM25 поиск время:         {кфп:.1f} сек")
+    print(f"LLM генерация время:                                 {llm_time:.1f} сек")
+    print(f"Общее время:                                         {total_time:.1f} сек")
+
     # Возврат через BaseModel + JSONResponse
     response_data = ChatAnswerResponse(
         answer=answer,
