@@ -20,13 +20,14 @@ services:
     container_name: neuro_backend
     restart: always
     ports:
-      - "3000:3000"
+      - '3000:3000'
     depends_on:
       - db
     environment:
       - PORT=3000
       - JWT_SECRET=super_secret_key_change_me
       - UPLOADS_PATH=/app/uploads
+      - AI_SERVICE_ANSWER_URL=http://ai-agent:3001/chat/answer
       # Данные для подключения к Postgres
       - DB_HOST=db
       - DB_PORT=5432
@@ -43,7 +44,7 @@ services:
     container_name: neuro_frontend
     restart: always
     ports:
-      - "8080:80"
+      - '8080:80'
     depends_on:
       - server
 
@@ -53,10 +54,10 @@ services:
     container_name: ai_agent
     restart: always
     ports:
-      - "3001:3001"
+      - '3001:3001'
     depends_on:
-        - db
-        - server
-        - client
+      - db
+      - server
+      - client
 volumes:
   postgres_data:
