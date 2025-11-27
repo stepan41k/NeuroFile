@@ -154,7 +154,7 @@ class AuthManager {
 				passwordInput.value = ''
 				confirmInput.value = ''
 				this.showMessage('Please log in', 'success')
-			}, 1500)
+			}, 300000)
 		} catch (err: any) {
 			this.showMessage(err.message, 'error')
 		} finally {
@@ -306,16 +306,30 @@ class NeuralInterface {
                 <i class="bi bi-chat-square-text me-2"></i>Recent chats
             </div>
         `
+
 		chats.forEach(chat => {
 			const a = document.createElement('a')
 			a.href = '#'
 			a.className = 'nav-item'
 			if (this.currentChatId == chat.id) a.classList.add('active')
-			a.innerHTML = `<i class="bi bi-chat-left"></i><span>${chat.title}</span>`
+
+			// Форматируем дату (используем поле last_activity от сервера)
+			const dateStr = this.formatChatDate(chat.last_activity)
+
+			// Новая структура HTML
+			a.innerHTML = `
+                <i class="bi bi-chat-left"></i>
+                <div class="chat-info">
+                    <span class="chat-title" title="${chat.title}">${chat.title}</span>
+                    <span class="chat-date">${dateStr}</span>
+                </div>
+            `
+
 			a.addEventListener('click', e => {
 				e.preventDefault()
 				this.loadChat(chat.id)
 			})
+
 			this.historyList.appendChild(a)
 		})
 	}
@@ -356,19 +370,47 @@ class NeuralInterface {
 		this.loadHistory() // Снять выделение
 	}
 
+	private formatChatDate(isoDate: string): string {
+		const date = new Date(isoDate)
+		const now = new Date()
+
+		const isToday = date.toDateString() === now.toDateString()
+
+		const yesterday = new Date(now)
+		yesterday.setDate(now.getDate() - 1)
+		const isYesterday = date.toDateString() === yesterday.toDateString()
+
+		if (isToday) {
+			// Если сегодня — показываем время (14:30)
+			return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+		} else if (isYesterday) {
+			return 'Yesterday'
+		} else {
+			// Иначе дату (25.11)
+			return date.toLocaleDateString([], { day: '2-digit', month: '2-digit' })
+		}
+	}
+
 	private async handleSend() {
 		const text = this.userInput.value.trim()
 		if (!text || this.isGenerating) return
+
+		const conflictsToggle = document.getElementById(
+			'conflictsToggle'
+		) as HTMLInputElement
+		const separateConflicts = conflictsToggle ? conflictsToggle.checked : false
 
 		const welcome = document.querySelector('.welcome-screen')
 		if (welcome) welcome.remove()
 
 		this.appendMessage('You', text, 'user')
 		this.userInput.value = ''
+		this.userInput.style.height = 'auto'
 		this.isGenerating = true
 
 		try {
 			if (!this.currentChatId) {
+				// ... (код создания чата остается прежним) ...
 				const title = text.slice(0, 30) + (text.length > 30 ? '...' : '')
 				const createRes = await fetch(`${API_URL}/chats`, {
 					method: 'POST',
@@ -383,11 +425,17 @@ class NeuralInterface {
 				this.loadHistory()
 			}
 
-			const loadingMsg = this.appendMessage(
-				'Neuro',
-				'<span class="typing-dots">...</span>',
-				'ai'
-			)
+			// --- ОБНОВЛЕНИЕ: Анимация загрузки ---
+			// Вставляем красивый HTML индикатор
+			const loadingHTML = `
+                <div class="typing-indicator">
+                    <div class="typing-dot"></div>
+                    <div class="typing-dot"></div>
+                    <div class="typing-dot"></div>
+                </div>
+            `
+			// Передаем false в format, чтобы не экранировать HTML
+			const loadingMsg = this.appendMessage('Neuro', loadingHTML, 'ai', false)
 			const contentDiv = loadingMsg.querySelector(
 				'.message-content'
 			) as HTMLElement
@@ -398,41 +446,102 @@ class NeuralInterface {
 					'Content-Type': 'application/json',
 					Authorization: `Bearer ${this.token}`,
 				},
-				body: JSON.stringify({ chat_id: this.currentChatId, content: text }),
+				body: JSON.stringify({
+					chat_id: this.currentChatId,
+					content: text,
+					separate_conflicts: separateConflicts, // <-- ДОБАВИЛИ ПОЛЕ
+				}),
 			})
 
 			if (!res.ok) throw new Error('Error')
+
 			const data = await res.json()
-			await this.typeWriterEffect(contentDiv, data.content)
+
+			// Запускаем печать ответа (Typewriter)
+			if (data.content) {
+				await this.typeWriterEffect(contentDiv, data.content)
+			} else if (data.error) {
+				contentDiv.innerHTML = `❌ ${data.error}`
+			} else {
+				contentDiv.innerHTML = '❌ Unknown error'
+			}
 		} catch (e) {
+			// Удаляем индикатор загрузки при ошибке, если он остался
+			const loaders = document.querySelectorAll('.typing-indicator')
+			loaders.forEach(el => el.remove())
+
 			this.appendMessage('System', 'Error communicating with AI.', 'ai')
 		} finally {
 			this.isGenerating = false
 		}
 	}
 
-	private appendMessage(name: string, text: string, role: string) {
+	private appendMessage(
+		name: string,
+		text: string,
+		role: string,
+		shouldFormat: boolean = true
+	) {
 		const wrapper = document.createElement('div')
 		wrapper.className = `message-wrapper ${role}`
+
 		const icon =
 			role === 'ai' ? '<i class="bi bi-stars text-accent me-2"></i>' : ''
-		wrapper.innerHTML = `<div class="message-role">${icon}${name}</div><div class="message-content">${this.formatText(
-			text
-		)}</div>`
+
+		// Если это индикатор загрузки, не форматируем его через marked
+		const content = shouldFormat ? this.formatText(text) : text
+
+		wrapper.innerHTML = `
+            <div class="message-role">${icon}${name}</div>
+            <div class="message-content">${content}</div>
+        `
+
 		this.chatContainer.appendChild(wrapper)
 		this.chatContainer.scrollTop = this.chatContainer.scrollHeight
 		return wrapper
 	}
 
 	private formatText(text: string): string {
-		let formatted = text.replace(/\n/g, '<br>')
-		if (formatted.includes('```')) {
-			formatted = formatted.replace(
-				/```([\s\S]*?)```/g,
-				'<div class="code-block">$1</div>'
-			)
+		// @ts-ignore
+		if (typeof marked === 'undefined') return text
+
+		// Настройка Marked (делаем один раз, но можно и тут)
+		// @ts-ignore
+		if (!this.markedConfigured) {
+			// @ts-ignore
+			const renderer = new marked.Renderer()
+
+			// Переопределяем рендеринг блоков кода
+			renderer.code = (code: string, language: string) => {
+				// Подсветка синтаксиса
+				// @ts-ignore
+				const validLang = hljs.getLanguage(language) ? language : 'plaintext'
+				// @ts-ignore
+				const highlighted = hljs.highlight(code, { language: validLang }).value
+
+				// Возвращаем HTML с кнопкой копирования
+				// Мы кодируем сам код в атрибут data-code, чтобы потом его легко достать
+				// encodeURIComponent нужен, чтобы кавычки не сломали HTML
+				return `
+                    <pre>
+                        <button class="copy-btn" onclick="navigator.clipboard.writeText(decodeURIComponent('${encodeURIComponent(
+													code
+												)}')); this.innerText='Copied!'; setTimeout(()=>this.innerText='Copy', 300000);">
+                            <i class="bi bi-clipboard"></i> Copy
+                        </button>
+                        <code class="hljs language-${validLang}">${highlighted}</code>
+                    </pre>
+                `
+			}
+
+			// @ts-ignore
+			marked.use({ renderer })
+			// @ts-ignore
+			this.markedConfigured = true
 		}
-		return formatted
+
+		// @ts-ignore
+		return marked.parse(text)
 	}
 
 	// ==================
@@ -518,52 +627,55 @@ class NeuralInterface {
 	}
 
 	private mapExtensionToType(ext: string): string {
-		if (['jpg', 'jpeg', 'png', 'svg', 'webp'].includes(ext)) return 'img'
-		if (['doc', 'docx'].includes(ext)) return 'docx'
-		if (['pdf'].includes(ext)) return 'pdf'
-		return 'txt'
+		if (['doc', 'docx', 'rtf', 'pdf'].includes(ext)) return ext
+		return 'unknown'
 	}
 
 	private async typeWriterEffect(element: HTMLElement, rawText: string) {
-		// Сначала форматируем текст (превращаем \n в <br>, markdown в html)
-		const formatted = this.formatText(rawText)
+		// Превращаем Markdown в HTML сразу
+		const html = this.formatText(rawText)
 
-		// Очищаем "..." (индикатор загрузки)
-		element.innerHTML = ''
+		element.innerHTML = '' // Очищаем индикатор загрузки
 
 		let i = 0
-		const speed = 15 // Скорость печати (мс на символ)
+		const speed = 10 // Скорость печати (чем меньше, тем быстрее)
 
 		return new Promise<void>(resolve => {
 			const interval = setInterval(() => {
-				// Если мы дошли до конца
-				if (i >= formatted.length) {
+				if (i >= html.length) {
 					clearInterval(interval)
 					resolve()
 					return
 				}
 
-				const char = formatted.charAt(i)
+				const char = html.charAt(i)
 
-				// Если встретили начало HTML-тега, например <br> или <div>
 				if (char === '<') {
-					const endIndex = formatted.indexOf('>', i)
+					// Если это тег, ищем его конец и вставляем целиком
+					const endIndex = html.indexOf('>', i)
 					if (endIndex !== -1) {
-						// Вставляем весь тег целиком сразу
-						element.innerHTML += formatted.substring(i, endIndex + 1)
-						i = endIndex + 1 // Перепрыгиваем индекс
+						element.innerHTML += html.substring(i, endIndex + 1)
+						i = endIndex + 1
 					} else {
-						// Если тег сломан, печатаем как есть
+						element.innerHTML += char
+						i++
+					}
+				} else if (char === '&') {
+					// Если это спецсимвол (например &nbsp;), ищем конец
+					const endIndex = html.indexOf(';', i)
+					if (endIndex !== -1) {
+						element.innerHTML += html.substring(i, endIndex + 1)
+						i = endIndex + 1
+					} else {
 						element.innerHTML += char
 						i++
 					}
 				} else {
-					// Обычный символ
+					// Обычный текст
 					element.innerHTML += char
 					i++
 				}
 
-				// Прокрутка вниз при печати
 				this.chatContainer.scrollTop = this.chatContainer.scrollHeight
 			}, speed)
 		})
@@ -592,10 +704,10 @@ class NeuralInterface {
 		if (filtered.length === 0) {
 			// Если поиск пустой, но файлов нет вообще
 			if (this.filesData.length === 0) {
-				this.fileListContainer.innerHTML = `<div class="text-muted text-center mt-3 small">No uploaded files</div>`
+				this.fileListContainer.innerHTML = `<div class="text-center mt-3 small">No uploaded files</div>`
 			} else {
 				// Если файлы есть, но поиск не дал результатов
-				this.fileListContainer.innerHTML = `<div class="text-muted text-center mt-3 small">No matches found</div>`
+				this.fileListContainer.innerHTML = `<div class="text-center mt-3 small">No matches found</div>`
 			}
 			return
 		}
@@ -606,16 +718,38 @@ class NeuralInterface {
 		})
 	}
 
-	private createFileDOM(file: { id: string; name: string; size: number }) {
+	private createFileDOM(file: {
+		id: string
+		name: string
+		size: number
+		type?: string
+	}) {
 		const sizeStr =
 			file.size < 1024 * 1024
 				? (file.size / 1024).toFixed(1) + ' KB'
 				: (file.size / (1024 * 1024)).toFixed(1) + ' MB'
 
+		let iconClass = 'bi-file-earmark'
+
+		// Если тип пришел как "word" (от старых загрузок), пытаемся уточнить его по имени
+		let type = file.type
+		if (!type || type === 'word') {
+			type = this.mapExtensionToType(
+				file.name.split('.').pop()?.toLowerCase() || ''
+			)
+		}
+
+		// Настройка иконок
+		if (type === 'pdf') iconClass = 'bi-file-earmark-pdf text-light'
+		// Для DOC и DOCX используем одну и ту же синюю иконку
+		else if (type === 'doc' || type === 'docx')
+			iconClass = 'bi-file-earmark-word text-light'
+		else if (type === 'rtf') iconClass = 'bi-file-earmark-richtext text-light'
+
 		const div = document.createElement('div')
 		div.className = 'file-item'
 		div.innerHTML = `
-            <div class="file-icon"><i class="bi bi-file-earmark-text"></i></div>
+            <div class="file-icon"><i class="bi ${iconClass}"></i></div>
             <div class="file-info">
                 <span class="file-name" title="${file.name}">${file.name}</span>
                 <span class="file-size">${sizeStr}</span>

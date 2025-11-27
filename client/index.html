@@ -22,6 +22,15 @@
 			rel="stylesheet"
 		/>
 
+		<!-- Стили для подсветки кода (тема Atom One Dark) -->
+		<link
+			rel="stylesheet"
+			href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css"
+		/>
+		<!-- Скрипт подсветки -->
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+		<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 		<link rel="stylesheet" href="/src/style.css" />
 	</head>
 	<body>
@@ -130,25 +139,10 @@
 					</a>
 
 					<div class="nav-icons" id="historyList">
-						<!-- Заголовок раздела (как на скрине) -->
-
-						<!-- Library: Иконка коллекции -->
-						<!-- <a href="#" class="nav-item">
-                    <i class="bi bi-collection"></i> 
-                    <span>Library</span>
-                </a> -->
-
-						<!-- History: Иконка часов -->
 						<a href="#" class="nav-item">
 							<i class="bi bi-clock-history"></i>
 							<span>History</span>
 						</a>
-
-						<!-- Можно добавить Settings для полноты картины
-                <a href="#" class="nav-item">
-                    <i class="bi bi-gear"></i>
-                    <span>Settings</span>
-                </a> -->
 					</div>
 				</div>
 
@@ -183,32 +177,67 @@
 				<!-- Floating Input -->
 				<div class="input-dock">
 					<div class="input-container">
-						<textarea
-							id="userInput"
-							class="chat-input"
-							placeholder="Message Neuro..."
-							rows="1"
-						></textarea>
+						<!-- ВЕРХНИЙ РЯД: Поле ввода + Кнопка отправки -->
+						<div class="input-row-top">
+							<textarea
+								id="userInput"
+								class="chat-input"
+								placeholder="Message Neuro..."
+								rows="1"
+							></textarea>
 
-						<div class="input-actions">
-							<div class="left-actions">
-								<button class="icon-btn" title="Web Search">
-									<i class="bi bi-globe"></i>
-								</button>
-								<button class="icon-btn" title="Settings">
-									<i class="bi bi-sliders"></i>
-								</button>
-							</div>
 							<div class="right-actions">
 								<button class="send-btn" id="sendBtn">
 									<i class="bi bi-arrow-up-short"></i>
 								</button>
 							</div>
 						</div>
+
+						<!-- НИЖНИЙ РЯД: Скрепка + Переключатель -->
+						<div class="input-row-bottom">
+							<div class="left-actions">
+								<!-- Кнопка скрепки -->
+								<button
+									class="icon-btn"
+									title="Attach file"
+									onclick="document.getElementById('fileInput').click()"
+								>
+									<i class="bi bi-paperclip"></i>
+								</button>
+
+								<!-- Разделитель -->
+								<div
+									style="
+										width: 1px;
+										height: 16px;
+										background: rgba(255, 255, 255, 0.1);
+										margin: 0 4px;
+									"
+								></div>
+
+								<!-- Переключатель -->
+								<label
+									class="toggle-wrapper"
+									title="Enable strict conflict analysis"
+								>
+									<input
+										type="checkbox"
+										id="conflictsToggle"
+										class="toggle-checkbox"
+									/>
+
+									<div class="toggle-label">
+										<span class="toggle-switch"></span>
+									</div>
+
+									<span class="toggle-text">Conflicts</span>
+								</label>
+							</div>
+						</div>
 					</div>
-					<div class="footer-text">
-						AI generates simulated responses for UI testing.
-					</div>
+				</div>
+				<div class="footer-text">
+					<!-- AI generates simulated responses for UI testing. -->
 				</div>
 			</main>
 
@@ -239,9 +268,12 @@
 					<div class="filter-scroll" id="filterContainer">
 						<span class="filter-tag active" data-type="all">All</span>
 						<span class="filter-tag" data-type="pdf">PDF</span>
+
+						<!-- ИЗМЕНЕНИЕ ЗДЕСЬ: Два отдельных тега -->
+						<span class="filter-tag" data-type="doc">DOC</span>
 						<span class="filter-tag" data-type="docx">DOCX</span>
-						<span class="filter-tag" data-type="txt">TXT</span>
-						<span class="filter-tag" data-type="img">IMG</span>
+
+						<span class="filter-tag" data-type="rtf">RTF</span>
 					</div>
 				</div>
 
@@ -252,10 +284,10 @@
 
 				<!-- Upload Area (Оставляем как было) -->
 				<div class="upload-area mt-auto">
-					<!-- ... код upload area ... -->
 					<label for="fileInput" class="upload-box">
 						<i class="bi bi-cloud-arrow-up text-accent mb-2 fs-3"></i>
-						<span class="small">Drop files here</span>
+						<span class="small">Upload File</span>
+						<!-- УБРАЛИ атрибут accept -->
 						<input type="file" id="fileInput" hidden />
 					</label>
 				</div>

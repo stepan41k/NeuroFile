@@ -23,6 +23,7 @@ services:
       - '3000:3000'
     depends_on:
       - db
+      - ai-agent
     environment:
       - PORT=3000
       - JWT_SECRET=super_secret_key_change_me
@@ -55,9 +56,5 @@ services:
     restart: always
     ports:
       - '3001:3001'
-    depends_on:
-      - db
-      - server
-      - client
 volumes:
   postgres_data:

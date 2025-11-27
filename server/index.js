@@ -115,7 +115,11 @@ const storage = multer.diskStorage({
 		cb(null, uniqueSuffix + path.extname(file.originalname))
 	},
 })
-const upload = multer({ storage })
+
+const upload = multer({
+	storage: storage,
+	limits: { fileSize: 50 * 1024 * 1024 },
+})
 
 // --- Middleware Auth ---
 const authenticateToken = (req, res, next) => {
@@ -209,42 +213,45 @@ app.get('/api/auth/verify', authenticateToken, (req, res) => {
 })
 
 // 3. Загрузка файла
-app.post(
-	'/api/files',
-	authenticateToken,
-	upload.single('file'),
-	async (req, res) => {
+app.post('/api/files', authenticateToken, (req, res) => {
+	// Оборачиваем upload.single в функцию, чтобы поймать ошибку фильтра Multer
+	const uploadSingle = upload.single('file')
+
+	uploadSingle(req, res, async err => {
+		if (err) {
+			return res.status(400).json({ error: err.message }) // Вернет ошибку "Invalid file type..."
+		}
 		if (!req.file) return res.status(400).json({ error: 'No file uploaded' })
 
-		const { filename, size, path: filePath } = req.file
-
-		// --- ИСПРАВЛЕНИЕ КОДИРОВКИ ---
-		// Преобразуем "битую" строку Latin1 обратно в буфер, а затем читаем как UTF-8
+		// Исправление кодировки (как мы делали раньше)
 		const originalname = Buffer.from(req.file.originalname, 'latin1').toString(
 			'utf8'
 		)
-		// -----------------------------
-
+		const { filename, size, path: filePath } = req.file
 		const ext = path.extname(originalname).toLowerCase().replace('.', '')
-		const type = ['jpg', 'png', 'jpeg'].includes(ext) ? 'img' : ext
+
+		// Определяем тип для БД (для удобной фильтрации на фронте)
+		let type = 'unknown'
+		if (['doc', 'docx', 'pdf', 'rtf'].includes(ext)) {
+			type = ext
+		}
 
 		try {
 			const result = await pool.query(
 				`INSERT INTO files (user_id, filename, original_name, size, path, type) 
-             VALUES ($1, $2, $3, $4, $5, $6) 
-             RETURNING id`,
+                 VALUES ($1, $2, $3, $4, $5, $6) 
+                 RETURNING id`,
 				[req.user.id, filename, originalname, size, filePath, type]
 			)
 
 			const newFileId = result.rows[0].id
-			// Возвращаем фронтенду уже правильное имя
 			res.json({ id: newFileId, name: originalname, size, type })
-		} catch (err) {
-			console.error(err)
+		} catch (dbErr) {
+			console.error(dbErr)
 			res.status(500).json({ error: 'Database error' })
 		}
-	}
-)
+	})
+})
 
 // 4. Список файлов
 app.get('/api/files', authenticateToken, async (req, res) => {
@@ -356,9 +363,10 @@ app.post('/api/register', async (req, res) => {
 
 // chats
 app.post('/api/chat/send', authenticateToken, async (req, res) => {
-	const { chat_id, content } = req.body
+	const { chat_id, content, separate_conflicts } = req.body
 	const userId = req.user.id
 
+	// Валидация входных данных
 	if (!chat_id || !content) {
 		return res.status(400).json({ error: 'Missing chat_id or content' })
 	}
@@ -370,9 +378,9 @@ app.post('/api/chat/send', authenticateToken, async (req, res) => {
 			[chat_id, 'user', content]
 		)
 
-		// 2. Собираем данные
+		// 2. Сбор данных для контекста
 
-		// а) История переписки
+		// а) История переписки (сортировка от старых к новым)
 		const historyRes = await pool.query(
 			'SELECT role, content FROM messages WHERE chat_id = $1 ORDER BY timestamp ASC',
 			[chat_id]
@@ -386,28 +394,40 @@ app.post('/api/chat/send', authenticateToken, async (req, res) => {
 		)
 		const filesList = filesRes.rows.map(f => f.original_name).join(', ')
 
-		// 3. Формируем payload строго по схеме ChatRequest
+		// 3. Формируем System Message (Инструкция)
+		let systemInstruction = 'You are a helpful assistant.'
 
-		// Формируем системное сообщение с контекстом файлов
-		// Так как в ChatRequest нет поля files_context, передаем инфо в system message
-		const systemMessage = {
-			role: 'system',
-			message: filesList
-				? `You have access to the following files: ${filesList}. Use them to answer user questions.`
-				: 'You are a helpful assistant.',
+		// Добавляем контекст файлов
+		if (filesList) {
+			systemInstruction += ` You have access to the following files: ${filesList}. Use them to answer user questions.`
 		}
 
+		// Логика тумблера "Conflicts"
+		if (separate_conflicts) {
+			systemInstruction += `
+IMPORTANT: The user wants a detailed conflict analysis.
+If you find contradictions between files, use the "attention" field in your response to list the conflicting file names pairs.
+In the message body, explicitly describe the contradiction.`
+		}
+
+		const systemMessage = {
+			role: 'system',
+			message: systemInstruction,
+		}
+
+		// 4. Формируем массив сообщений для AI (System + History + User)
 		// Преобразуем историю из формата БД (role='ai') в формат API (role='assistant')
 		const formattedHistory = rawHistory.map(msg => ({
-			role: msg.role === 'ai' ? 'assistant' : 'user', // Важно: Pydantic ждет 'assistant'
+			role: msg.role === 'ai' ? 'assistant' : 'user',
 			message: msg.content,
 		}))
 
-		// Собираем итоговый массив chat
-		// Порядок: System -> History -> (User message уже есть в history, так как мы его сохранили на шаге 1)
+		// Собираем итоговый пейлоад
+		// Примечание: последнее сообщение юзера уже есть в rawHistory (мы сохранили его на шаге 1)
 		const chatPayload = [systemMessage, ...formattedHistory]
 
-		// 4. Отправляем запрос к Python AI Service
+		// 5. Отправляем запрос к Python AI Service
+		// URL агента (в Docker Compose это http://ai-agent:3001/chat/answer)
 		const aiServiceUrl =
 			process.env.AI_SERVICE_URL || 'http://ai-agent:3001/chat/answer'
 
@@ -418,7 +438,9 @@ app.post('/api/chat/send', authenticateToken, async (req, res) => {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
-					chat: chatPayload, // Соответствует class ChatRequest
+					// 2. ДОБАВЛЯЕМ ПОЛЕ В ЗАПРОС К AI
+					separate_conflicts: separate_conflicts || false, // Если undefined, шлем false
+					chat: chatPayload,
 				}),
 			})
 
@@ -427,47 +449,90 @@ app.post('/api/chat/send', authenticateToken, async (req, res) => {
 				throw new Error(`AI Service error: ${aiResponse.status} - ${errText}`)
 			}
 
-			// 5. Парсим ответ согласно class ChatAnswerResponse
 			const aiData = await aiResponse.json()
 
-			// Структура ответа: { chat: [ { role: 'assistant', message: '...', files_used: [...] } ] }
-			// Берем последнее сообщение из списка chat
-			if (aiData.chat && aiData.chat.length > 0) {
-				const lastMessage = aiData.chat[aiData.chat.length - 1]
-				aiText = lastMessage.message
+			// 6. Парсим ответ от AI (Pydantic структура)
+			// Ожидаем: { chat: [ { role: "assistant", message: "...", attention: [...] } ] }
 
-				// (Опционально) Можно залогировать, какие файлы использовались
-				if (lastMessage.files_used && lastMessage.files_used.length > 0) {
-					console.log('AI used files:', lastMessage.files_used)
+			if (aiData.chat && aiData.chat.length > 0) {
+				// Берем последнее сообщение от ассистента
+				const lastMessage = aiData.chat[aiData.chat.length - 1]
+
+				// Основной текст ответа
+				aiText = lastMessage.message || ''
+
+				// Обработка противоречий (поле attention)
+				// Формат: "attention": [ ["Файл А", "Файл Б"], ... ]
+				if (
+					lastMessage.attention &&
+					Array.isArray(lastMessage.attention) &&
+					lastMessage.attention.length > 0
+				) {
+					// Генерируем HTML блок предупреждения
+					let conflictsHtml = `
+                        <div class="conflict-alert">
+                            <div class="conflict-header">
+                                <i class="bi bi-exclamation-triangle-fill"></i>
+                                <span>Обнаружены противоречия</span>
+                            </div>
+                            <ul class="conflict-list">
+                    `
+
+					lastMessage.attention.forEach(pair => {
+						// pair[0] и pair[1] — имена конфликтующих файлов
+						conflictsHtml += `
+                            <li>
+                                <span class="file-ref">${pair[0]}</span>
+                                <span class="conflict-divider">⚡</span>
+                                <span class="file-ref">${pair[1]}</span>
+                            </li>
+                        `
+					})
+
+					conflictsHtml += `</ul></div>`
+
+					// Приклеиваем HTML к тексту ответа
+					aiText += conflictsHtml
 				}
 			} else {
-				aiText = 'Error: Empty response from AI agent.'
+				aiText = 'Error: Empty response structure from AI agent.'
 			}
 		} catch (aiErr) {
 			console.error('AI Connection Error:', aiErr)
-			aiText = 'Error: Could not connect to AI Agent.'
+			aiText = 'Error: Could not connect to AI Agent. Please try again later.'
 		}
 
-		// 6. Сохраняем ответ AI в БД
+		// 7. Сохраняем ответ AI в БД
 		await pool.query(
 			'INSERT INTO messages (chat_id, role, content) VALUES ($1, $2, $3)',
 			[chat_id, 'ai', aiText]
 		)
 
-		// 7. Возвращаем ответ фронтенду
+		// 8. Возвращаем ответ фронтенду
 		res.json({ role: 'ai', content: aiText })
 	} catch (err) {
-		console.error('Chat Error:', err)
+		console.error('Chat Endpoint Error:', err)
 		res.status(500).json({ error: 'Internal Server Error' })
 	}
 })
 
 app.get('/api/chats', authenticateToken, async (req, res) => {
 	try {
-		const result = await pool.query(
-			'SELECT id, title, created_at FROM chats WHERE user_id = $1 ORDER BY created_at DESC',
-			[req.user.id]
-		)
+		// Мы делаем JOIN с таблицей сообщений, группируем по чату
+		// и берем MAX(timestamp) сообщения. Если сообщений нет — берем created_at чата.
+		const query = `
+            SELECT 
+                c.id, 
+                c.title, 
+                COALESCE(MAX(m.timestamp), c.created_at) as last_activity
+            FROM chats c
+            LEFT JOIN messages m ON c.id = m.chat_id
+            WHERE c.user_id = $1
+            GROUP BY c.id
+            ORDER BY last_activity DESC
+        `
+
+		const result = await pool.query(query, [req.user.id])
 		res.json(result.rows)
 	} catch (err) {
 		console.error(err)
