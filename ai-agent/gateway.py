@@ -14,9 +14,10 @@ from object.LoadPDF import parse_pdf
 from object.LoadDOC_RTF import parse_doc_or_rtf
 # Генерация чанков полсе парсинга
 from object.GenChunk_old import normalize_pre_chank, add_source_and_id
+from object.GenChunk import merge_chunks_by_source
 # Модели
 from object.SystemSearch import SearchSystem
-from object.Models import Reranker, LLM
+from object.Models import Reranker, LogicalRelationship, LLM
 
 
 app = FastAPI()
@@ -26,8 +27,10 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 DB_SEARCH = SearchSystem(device=DEVICE)
 DB_SEARCH.load("./SearchStartData/pre-best-V4.pkl") # Для локальных тестов
 
-RERANKER = Reranker(device=DEVICE)
-LLM = LLM(device=DEVICE)
+RERANKER = Reranker(model='./model/reranker', device=DEVICE)
+LLM = LLM(model='./model/decoder-encoder',device=DEVICE)
+
+LR = LogicalRelationship(model="./model/lr", device=DEVICE)
 
 
 tmp_folder = Path("inputTMP")
@@ -173,6 +176,7 @@ class ChatAnswer(BaseModel):
     role: Literal["assistant"]
     message: str
     files_used: List[str]
+    attention: List[List[str]]
 
 class ChatAnswerResponse(BaseModel):
     chat: List[ChatAnswer]
@@ -182,6 +186,7 @@ class ChatMessage(BaseModel):
     message: str
 
 class ChatRequest(BaseModel):
+    separate_conflicts: bool
     chat: List[ChatMessage]
 
 @app.post("/chat/answer")
@@ -197,75 +202,61 @@ def chat_answer(req: ChatRequest):
     top_k_chunks = smart_search_chunk(DB_SEARCH, RERANKER, question)
     search_chunk_with_context = time.time() - search_chunk_with_context
 
-    # -------------------------------------------------------------------- Объеденяем чанки по source
-    # merged_source = {}
-    # for context_reranker_chunk in reranker_output:
-    #     key = context_reranker_chunk["source"]
-    #
-    #     if key in merged_source:
-    #         merged_source[key]["chunkIDs"].extend(context_reranker_chunk["chunkIDs"])
-    #         merged_source[key]["texts"].extend(context_reranker_chunk["texts"])
-    #     else:
-    #         merged_source[key] = {
-    #             "chunkIDs": list(context_reranker_chunk["chunkIDs"]),
-    #             "texts": list(context_reranker_chunk["texts"])
-    #         }
-    #
-    # source_chunks = []
-    # source_doc = []
-    # for src, chunks in merged_source.items():
-    #     source_doc.append(src)
-    #     # удаляем дубли по chunkID, сохраняя порядок
-    #     seen_ids = set()
-    #     unique_chunkIDs = []
-    #     unique_texts = []
-    #
-    #     for cid, text in zip(chunks["chunkIDs"], chunks["texts"]):
-    #         if cid not in seen_ids:
-    #             seen_ids.add(cid)
-    #             unique_chunkIDs.append(cid)
-    #             unique_texts.append(text)
-    #
-    #     # создаём список кортежей и сортируем по chunkID
-    #     paired_sorted = sorted(zip(unique_chunkIDs, unique_texts), key=lambda x: x[0])
-    #
-    #     if paired_sorted:
-    #         chunkIDs_sorted, texts_sorted = zip(*paired_sorted)
-    #     else:
-    #         chunkIDs_sorted, texts_sorted = [], []
-    #
-    #     source_chunks.append({
-    #         "source": src,
-    #         "chunkIDs": list(chunkIDs_sorted),
-    #         "texts": list(texts_sorted)
-    #     })
-    # -------------------------------------------------------------------- Объеденяем чанки по source
-    print(top_k_chunks)
-    # Генерация отвера по чанкам
-    context = ""
-    source_chunks = set()
-    for chunk_with_context in top_k_chunks:
-        source_chunks.add(chunk_with_context["source"])
-        for chunk in chunk_with_context["texts"]:
-            context = context + chunk + '\n'
-        context = context + "\n---\n"
+    # Объединение по source
+    merge_by_source = merge_chunks_by_source(top_k_chunks)
+    matrix, conflicts = LR.build_document_conflict_matrix(top_k_chunks)
 
     llm_time = time.time()
-    # ====== Генерация ответа ======
-    answer = LLM.generate_answer([msg.dict() for msg in req.chat], question, context)
+    answers = []
+
+    def build_context(chunks_group):
+        context = ""
+        source_chunks = set()
+        for chunk_source in chunks_group:
+            source_chunks.add(chunk_source["source"])
+            context += f"Файл: {chunk_source['source']}\n"
+            context += "\n\n".join(chunk_source["texts"]) + "\n\n"
+        return context, source_chunks
+
+    if conflicts and req.separate_conflicts:
+        # Генерация нескольких ответов для разных неконфликтных групп
+        non_conflicting_groups = LR.build_non_conflicting_groups(conflicts)
+        for group_sources in non_conflicting_groups:
+            # Отбираем только чанки, которые относятся к текущей группе source
+            group_chunks = [c for c in merge_by_source if c["source"] in group_sources]
+            context, source_chunks = build_context(group_chunks)
+
+            # Собираем attention только для файлов в этой группе
+            attention_pairs = [[c[0], c[1]] for c in conflicts if c[0] in source_chunks or c[1] in source_chunks]
+
+            answer = LLM.generate_answer([msg.dict() for msg in req.chat], question, context, attention="")
+            answers.append(ChatAnswer(
+                role="assistant",
+                message=answer,
+                files_used=list(source_chunks),
+                attention=attention_pairs
+            ))
+    else:
+        # Конфликты есть, но генерация нескольких ответов выключена
+        attention_pairs = [[c[0], c[1]] for c in conflicts] if conflicts else []
+
+        context, source_chunks = build_context(merge_by_source)
+        answer = LLM.generate_answer([msg.dict() for msg in req.chat], question, context, attention="")
+        answers.append(ChatAnswer(
+            role="assistant",
+            message=answer,
+            files_used=list(source_chunks),
+            attention=attention_pairs
+        ))
+
     llm_time = time.time() - llm_time
 
     total_time = time.time() - start_total
     print(f"Поиска чанков и контекста(RAG + BM25) время:         {search_chunk_with_context:.1f} сек")
     # print(f"RAG + BM25 поиск время:         {кфп:.1f} сек")
-    print(f"LLM генерация время:                                 {llm_time:.1f} сек")
+    print(f"{len(answers)} LLM генераций по времи:                {llm_time:.1f} сек")
     print(f"Общее время:                                         {total_time:.1f} сек")
 
     # Возврат через BaseModel + JSONResponse
-    response_data = ChatAnswerResponse(
-        chat=[ChatAnswer(
-            role="assistant",
-            message=answer,
-            files_used=list(source_chunks))],
-    )
+    response_data = ChatAnswerResponse(chat=answers)
     return response_data

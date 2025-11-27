@@ -1,3 +1,5 @@
+import numpy as np
+from itertools import combinations
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from sentence_transformers import CrossEncoder
 import torch
@@ -34,31 +36,58 @@ class Reranker:
 
 # ======================= LOGICAL RELATIONSHIP =======================
 class LogicalRelationship:
-    def __init__(self, model="...", device="cpu"):
-        self.tokenizer = AutoTokenizer.from_pretrained("cointegrated/rubert-base-cased-nli-threeway")
-        self.model = AutoModelForSequenceClassification.from_pretrained("cointegrated/rubert-base-cased-nli-threeway")
+    def __init__(self, model="./molder/lr", device="cpu"):
+        self.tokenizer = AutoTokenizer.from_pretrained(model)
+        self.model = AutoModelForSequenceClassification.from_pretrained(model)
         self.model.eval()
         self.model.to(device)
         self.device = device
 
     # ======================= CHECK CONFLICT =======================
-    def check_conflict(self, text1, text2, threshold=0.5):
+    def check_conflict(self, text1, text2):
         inputs = self.tokenizer(text1, text2, return_tensors="pt", truncation=True, max_length=512).to(self.device)
         with torch.no_grad():
             logits = self.model(**inputs).logits
             probs = torch.softmax(logits, dim=1)[0]
         contradiction_prob = probs[0].item()
-        return contradiction_prob >= threshold
+        return contradiction_prob
 
     # =================== BUILD MATRIX CONFLICT ====================
-    def build_conflict_matrix(self, chunks: list):
+
+    def build_conflict_matrix(self, chunks, threshold=0.5):
+        """
+        Возвращает:
+        - conflict_matrix — матрица конфликтов между чанками
+        - source_conflicts — список кортежей (sourceA, sourceB, score)
+        """
+
+        # 1. Собираем текст каждого чанка
+        texts = [" ".join(c["texts"]) for c in chunks]
+        sources = [c["source"] for c in chunks]
         n = len(chunks)
-        matrix = np.zeros((n, n), dtype=bool)
 
-        for i in range(n):
-            for j in range(i + 1, n):
-                conflict = self.check_conflict(chunks[i]["text"], chunks[j]["text"])
-                matrix[i, j] = conflict
-                matrix[j, i] = conflict  # симметрично
+        # 2. Матрица конфликтов
+        conflict_matrix = np.zeros((n, n), dtype=float)
 
-        return matrix
+        # 3. Временное хранилище конфликтов между источниками
+        source_pairs = {}  # (A, B) -> [scores]
+
+        for (i, j) in combinations(range(n), 2):
+            score = self.check_conflict(texts[i], texts[j])
+            conflict_matrix[i][j] = score
+            conflict_matrix[j][i] = score
+
+            if score >= threshold:
+                s1, s2 = sources[i], sources[j]
+                key = tuple(sorted([s1, s2]))
+                source_pairs.setdefault(key, []).append(score)
+
+        # 4. Финальные конфликты между документами
+        #    теперь в виде списка кортежей:
+        #    (sourceA, sourceB, avg_score)
+        source_conflicts = [
+            (a, b, float(np.mean(scores)))
+            for (a, b), scores in source_pairs.items()
+        ]
+
+        return conflict_matrix, source_conflicts

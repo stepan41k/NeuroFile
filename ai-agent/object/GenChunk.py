@@ -1,6 +1,10 @@
 import hashlib
-import nltk
-from nltk.tokenize import sent_tokenize, word_tokenize
+from collections import defaultdict
+
+
+# ============================================================
+#           ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+# ============================================================
 
 def add_source_and_id(chanks, source):
     for id in range(len(chanks)):
@@ -8,153 +12,295 @@ def add_source_and_id(chanks, source):
         chanks[id]["chunkID"] = id
     return chanks
 
-nltk.download('punkt_tab', quiet=True)
+def merge_chunks_by_source(chunks):
+    grouped = defaultdict(lambda: {"chunkIDs": [], "texts": []})
 
-def hash_text(text: str) -> str:
-    return hashlib.md5(text.encode("utf-8")).hexdigest()
+    for ch in chunks:
+        source = ch["source"]
+        grouped[source]["chunkIDs"].extend(ch.get("chunkID", []))
+        grouped[source]["texts"].extend(ch.get("text", []))
+
+    # Превращаем в список и сортируем по source
+    result = []
+    for source, data in grouped.items():
+        result.append({
+            "source": source,
+            "chunkIDs": data["chunkIDs"],
+            "texts": data["texts"]
+        })
+
+    result.sort(key=lambda x: x["source"])
+    return result
 
 def tokenize_len(text: str) -> int:
-    """Минимальная токенизация — по словам."""
-    return len(word_tokenize(text))
+    """Простейший токенайзер: считает слова."""
+    return len(text.split())
 
-def split_text_into_chunks(text, min_size, max_size):
-    sentences = sent_tokenize(text)
-    chunks = []
-    current = []
-    current_len = 0
 
-    for sent in sentences:
-        sent_len = tokenize_len(sent)
-        if current_len + sent_len <= max_size:
-            current.append(sent)
-            current_len += sent_len
-        else:
-            if current_len >= min_size:
-                chunks.append(" ".join(current))
-                current = [sent]
-                current_len = sent_len
-            else:
-                current.append(sent)
-                current_len += sent_len
+def hash_text(text: str) -> str:
+    """MD5-хэш текста — чтобы помечать таблицы."""
+    return hashlib.md5(text.encode("utf-8")).hexdigest()
 
-    if current:
-        chunks.append(" ".join(current))
-    return chunks
 
 def convert_table_to_text(table):
-    """Преобразуем таблицу в плоский текст (строки подряд)."""
-    if isinstance(table, str):
-        return table
-    if isinstance(table, list):
-        return "\n".join(["\t".join(map(str, row)) for row in table])
-    return str(table)
+    """
+    Преобразует таблицу (list[list[str]]) в текст формата:
+    | A | B | C |
+    """
+    lines = []
+    for row in table:
+        line = "| " + " | ".join(str(c) for c in row) + " |"
+        lines.append(line)
+    return "\n".join(lines)
 
-def split_large_table(table_text, min_size, max_size):
+
+# ============================================================
+#      МЯГКОЕ ДЕЛЕНИЕ СЛИШКОМ БОЛЬШОГО ЛОГИЧЕСКОГО БЛОКА
+# ============================================================
+
+def split_block_soft(block, min_size, max_size):
+    """Режет слишком большой логический блок по словам."""
+    words = block.split()
+    parts = []
+    cur = []
+    cur_len = 0
+
+    for w in words:
+        wl = tokenize_len(w)
+        if cur_len + wl > max_size:
+            parts.append(" ".join(cur))
+            cur = [w]
+            cur_len = wl
+        else:
+            cur.append(w)
+            cur_len += wl
+
+    if cur:
+        parts.append(" ".join(cur))
+
+    return parts
+
+
+# ============================================================
+#             ЛОГИЧЕСКОЕ ДЕЛЕНИЕ ТАБЛИЦЫ
+# ============================================================
+
+def split_table_logically(table_text, min_size, max_size):
     """
-    Разделяем таблицу на несколько чанков по строкам.
-    Возвращаем список текстовых чанков.
+    Делит таблицу логически корректно:
+    - строки с пустой первой ячейкой считаются продолжением предыдущей
+    - блоки не рвутся
+    - слишком большие блоки мягко режутся
     """
+
     lines = table_text.split("\n")
-    chunks = []
-    current = []
-    current_len = 0
+
+    blocks = []
+    current_block = []
+
+    def flush_block():
+        nonlocal current_block
+        if current_block:
+            blocks.append("\n".join(current_block))
+            current_block = []
 
     for line in lines:
-        line_len = tokenize_len(line)
-        if current_len + line_len > max_size:
-            if current:
-                chunks.append("\n".join(current))
-            current = [line]
-            current_len = line_len
-        else:
-            current.append(line)
-            current_len += line_len
+        parts = [p.strip() for p in line.split("|")]
 
-    if current:
-        chunks.append("\n".join(current))
+        first_cell = parts[1] if len(parts) > 1 else ""
+
+        if not current_block:
+            current_block.append(line)
+            continue
+
+        if first_cell == "":
+            current_block.append(line)
+        else:
+            flush_block()
+            current_block.append(line)
+
+    flush_block()
+
+    # собираем чанки
+    result = []
+    cur = []
+    cur_len = 0
+
+    def flush_chunk():
+        nonlocal cur, cur_len
+        if cur:
+            result.append("\n".join(cur))
+            cur = []
+            cur_len = 0
+
+    for block in blocks:
+        bsize = tokenize_len(block)
+
+        # если блок огромный — мягко режем
+        if bsize > max_size:
+            for small in split_block_soft(block, min_size, max_size):
+                ssize = tokenize_len(small)
+                if cur_len + ssize > max_size:
+                    flush_chunk()
+                cur.append(small)
+                cur_len += ssize
+            continue
+
+        # обычный случай
+        if cur_len + bsize > max_size:
+            flush_chunk()
+
+        cur.append(block)
+        cur_len += bsize
+
+    flush_chunk()
+    return result
+
+
+# ============================================================
+#         ДЕЛЕНИЕ ОГРОМНОГО ТЕКСТА НА ЧАНКИ
+# ============================================================
+
+def split_text_by_max_size(text, min_size, max_size, strict=True):
+    """
+    Делит текст по словам так, чтобы каждый чанк ≤ max_size.
+    """
+    words = text.split()
+    chunks = []
+    cur = []
+    cur_len = 0
+
+    for w in words:
+        wl = 1
+        if cur_len + wl > max_size:
+            chunks.append(" ".join(cur))
+            cur = [w]
+            cur_len = wl
+        else:
+            cur.append(w)
+            cur_len += wl
+
+    if cur:
+        chunks.append(" ".join(cur))
+
     return chunks
 
 
-def normalize_pre_chunks(pre_chunks, min_size, max_size):
+# ============================================================
+#                ОСНОВНАЯ ФУНКЦИЯ CHUNKING
+# ============================================================
+
+def normalize_pre_chunks(pre_chunks, min_size=50, max_size=200, strict=True):
     """
-    Нормализация pre_chunks в равномерные чанки.
-    Возвращает массив словарей:
-    {"chunkHash": str, "chunkSize": int, "text": str, "hashTable": [str]}
+    Объединяет текст, режет большие блоки,
+    логически режет таблицы, формирует конечные чанки.
     """
-    result = []
+
+    result_chunks = []
     current_text = []
     current_tables = []
     current_len = 0
 
     def flush_chunk():
-        nonlocal current_text, current_tables, current_len
-        if not current_text:
-            return
-        text = " ".join(current_text).strip()
-        if not text:
-            return
-        result.append({
-            "chunkHash": hash_text(text),
-            "chunkSize": tokenize_len(text),
-            "text": text,
-            "hashTable": current_tables.copy()
-        })
-        current_text = []
-        current_tables = []
-        current_len = 0
+        nonlocal current_text, current_len, current_tables
+        if current_text:
+            result_chunks.append({
+                "text": "\n\n".join(current_text),
+                "chunkSize": current_len,
+                "tables": current_tables.copy()
+            })
+            current_text = []
+            current_tables = []
+            current_len = 0
 
+    # ---------------------------
+    # 1. основной цикл
+    # ---------------------------
     for item in pre_chunks:
+
+        # ======================================
+        # TEXT
+        # ======================================
         if item["type"] == "text":
-            text_chunks = split_text_into_chunks(item["content"], min_size, max_size)
-            for chunk in text_chunks:
-                size = tokenize_len(chunk)
-                if current_len + size > max_size:
-                    if current_len >= min_size:
+            text = item["content"]
+            t_size = tokenize_len(text)
+
+            # если большой текст — режем
+            if t_size > max_size:
+                pieces = split_text_by_max_size(text, min_size, max_size, strict)
+
+                for part in pieces:
+                    psize = tokenize_len(part)
+                    if current_len + psize > max_size:
                         flush_chunk()
-                    # если текущий маленький, добавляем в него
-                current_text.append(chunk)
-                current_len += size
-
-        elif item["type"] == "table":
-            table_text = convert_table_to_text(item["content"])
-            table_size = tokenize_len(table_text)
-            table_hash = hash_text(table_text)
-
-            # если текущий чанк маленький — добавляем таблицу туда
-            if 0 < current_len < min_size:
-                current_text.append(table_text)
-                current_len += table_size
-                current_tables.append(table_hash)
+                    current_text.append(part)
+                    current_len += psize
                 continue
 
-            # если таблица или чанк+таблица превышает max_size — пробуем делить
-            if table_size > max_size or current_len + table_size > max_size:
-                split_res = try_split_table(table_text, min_size, max_size)
-                if len(split_res) == 2:
-                    flush_chunk()
-                    for part in split_res:
-                        part_hash = hash_text(part)
-                        result.append({
-                            "chunkHash": part_hash,
-                            "chunkSize": tokenize_len(part),
-                            "text": part,
-                            "hashTable": [part_hash]
-                        })
-                    continue
-                else:
-                    flush_chunk()
-                    result.append({
-                        "chunkHash": table_hash,
-                        "chunkSize": table_size,
-                        "text": table_text,
-                        "hashTable": [table_hash]
-                    })
-                    continue
+            # обычный текст
+            if current_len + t_size > max_size:
+                flush_chunk()
 
-            # иначе таблица умещается в текущий чанк
-            current_text.append(table_text)
-            current_len += table_size
-            current_tables.append(table_hash)
+            current_text.append(text)
+            current_len += t_size
+            continue
+
+        # ======================================
+        # TABLE
+        # ======================================
+        elif item["type"] == "table":
+            table_text = convert_table_to_text(item["content"])
+            table_parts = split_table_logically(table_text, min_size, max_size)
+
+            for part in table_parts:
+                part_size = tokenize_len(part)
+                part_hash = hash_text(part)
+
+                if current_len + part_size > max_size:
+                    flush_chunk()
+
+                current_text.append(part)
+                current_tables.append(part_hash)
+                current_len += part_size
+
+            continue
 
     flush_chunk()
-    return result
+
+    # ======================================
+    # Финальное объединение маленьких чанков
+    # ======================================
+    final = []
+    buffer = None
+
+    for ch in result_chunks:
+        if ch["chunkSize"] < min_size:
+            if buffer is None:
+                buffer = ch
+            else:
+                merged = {
+                    "text": buffer["text"] + "\n\n" + ch["text"],
+                    "chunkSize": buffer["chunkSize"] + ch["chunkSize"],
+                    "tables": buffer["tables"] + ch["tables"]
+                }
+                buffer = merged
+        else:
+            if buffer:
+                if buffer["chunkSize"] + ch["chunkSize"] <= max_size:
+                    merged = {
+                        "text": buffer["text"] + "\n\n" + ch["text"],
+                        "chunkSize": buffer["chunkSize"] + ch["chunkSize"],
+                        "tables": buffer["tables"] + ch["tables"]
+                    }
+                    final.append(merged)
+                else:
+                    final.append(buffer)
+                    final.append(ch)
+                buffer = None
+            else:
+                final.append(ch)
+
+    if buffer:
+        final.append(buffer)
+
+    return final
