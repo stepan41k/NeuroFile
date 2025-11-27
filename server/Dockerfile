@@ -9,6 +9,7 @@ COPY package*.json ./
 
 # Устанавливаем зависимости
 RUN npm install --production
+RUN npm install form-data
 
 # Копируем остальной код
 COPY . .

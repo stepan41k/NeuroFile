@@ -51,10 +51,22 @@ class LogicalRelationship:
 
     def check_conflict(self, text1, text2):
         with torch.inference_mode():
-            out = self.model(**self.tokenizer(text1, text2, return_tensors='pt').to(self.model.device))
+            # Токенизируем с обрезкой до 512 токенов
+            tokens = self.tokenizer(
+                text1,
+                text2,
+                return_tensors='pt',
+                truncation=True,  # обрезаем до max_length
+                max_length=512,
+                padding='max_length'  # для единообразия
+            ).to(self.model.device)
+
+            out = self.model(**tokens)
             proba = torch.softmax(out.logits, -1).cpu().numpy()[0]
-        data = ({v: proba[k] for k, v in self.model.config.id2label.items()})
-        return data['contradiction']
+
+        # Преобразуем в словарь лейблов
+        data = {v: proba[k] for k, v in self.model.config.id2label.items()}
+        return data.get('contradiction', 0.0)
 
         # =================== BUILD MATRIX CONFLICT ====================
 

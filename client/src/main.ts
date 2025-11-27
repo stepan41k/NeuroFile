@@ -344,13 +344,25 @@ class NeuralInterface {
 				headers: { Authorization: `Bearer ${this.token}` },
 			})
 			const messages = await res.json()
-			messages.forEach((msg: any) => {
-				this.appendMessage(
-					msg.role === 'user' ? 'You' : 'Neuro',
-					msg.content,
-					msg.role
-				)
-			})
+            messages.forEach((msg: any) => {
+                // Приводим files_used к массиву строк
+                const files = (msg.files_used || []).map((f: any) =>
+                    typeof f === 'string' ? f : f.name
+                )
+
+                // Передаем attention
+                const attention = msg.attention || []
+
+                this.appendMessage(
+                    msg.role === 'user' ? 'You' : 'Neuro',
+                    msg.content,
+                    msg.role,
+                    true,
+                    files,
+                    attention
+                )
+            }
+        )
 		} catch (e) {
 			console.error(e)
 		}
@@ -434,13 +446,7 @@ class NeuralInterface {
                     <div class="typing-dot"></div>
                 </div>
             `
-			// Передаем false в format, чтобы не экранировать HTML
-			const loadingMsg = this.appendMessage('Neuro', loadingHTML, 'ai', false)
-			const contentDiv = loadingMsg.querySelector(
-				'.message-content'
-			) as HTMLElement
-
-			const res = await fetch(`${API_URL}/chat/send`, {
+            const res = await fetch(`${API_URL}/chat/send`, {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json',
@@ -456,10 +462,15 @@ class NeuralInterface {
 			if (!res.ok) throw new Error('Error')
 
 			const data = await res.json()
+            // Передаем false в format, чтобы не экранировать HTML
+            const loadingMsg = this.appendMessage('Neuro', loadingHTML, 'ai', true, data.files_used || [])
+            const contentDiv = loadingMsg.querySelector(
+                '.message-content'
+            ) as HTMLElement
 
 			// Запускаем печать ответа (Typewriter)
 			if (data.content) {
-				await this.typeWriterEffect(contentDiv, data.content)
+                await this.typeWriterEffect(contentDiv, data.content)
 			} else if (data.error) {
 				contentDiv.innerHTML = `❌ ${data.error}`
 			} else {
@@ -476,30 +487,43 @@ class NeuralInterface {
 		}
 	}
 
-	private appendMessage(
-		name: string,
-		text: string,
-		role: string,
-		shouldFormat: boolean = true
-	) {
-		const wrapper = document.createElement('div')
-		wrapper.className = `message-wrapper ${role}`
+    private appendMessage(
+        name: string,
+        text: string,
+        role: string,
+        shouldFormat: boolean = true,
+        filesUsed: string[] = [],
+        attention: number[][] = []
+    ) {
+        const wrapper = document.createElement('div')
+        wrapper.className = `message-wrapper ${role}`
 
-		const icon =
-			role === 'ai' ? '<i class="bi bi-stars text-accent me-2"></i>' : ''
+        const icon = role === 'ai' ? '<i class="bi bi-stars text-accent me-2"></i>' : ''
+        const content = shouldFormat ? this.formatText(text) : text
 
-		// Если это индикатор загрузки, не форматируем его через marked
-		const content = shouldFormat ? this.formatText(text) : text
+        let filesHTML = ''
+        if (filesUsed.length > 0) {
+            filesHTML = `<div class="message-files"><strong>Files used:</strong> ${filesUsed
+                .map(f => `<span class="file-tag">${f}</span>`)
+                .join(', ')}</div>`
+        }
 
-		wrapper.innerHTML = `
+        let attentionHTML = ''
+        if (attention.length > 0) {
+            attentionHTML = `<div class="message-attention"><strong>Attention:</strong> ${JSON.stringify(attention)}</div>`
+        }
+
+        wrapper.innerHTML = `
             <div class="message-role">${icon}${name}</div>
             <div class="message-content">${content}</div>
+            ${filesHTML}
+            ${attentionHTML}
         `
 
-		this.chatContainer.appendChild(wrapper)
-		this.chatContainer.scrollTop = this.chatContainer.scrollHeight
-		return wrapper
-	}
+        this.chatContainer.appendChild(wrapper)
+        this.chatContainer.scrollTop = this.chatContainer.scrollHeight
+        return wrapper
+    } // <-- убедись, что эта скобка закрыта
 
 	private formatText(text: string): string {
 		// @ts-ignore
