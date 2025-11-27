@@ -249,8 +249,6 @@ class LLM:
 
         # Декодируем
         response = self.tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0].strip()
-        if attention != "":
-            response = f"Внимание:{attention}" + response
 
         # Сохраняем ответ модели в историю
         chat_history.append({"role": "assistant", "content": response})
