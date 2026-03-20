@@ -1,16 +1,18 @@
 import hashlib
 from collections import defaultdict
 
-
 # ============================================================
 #           ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
 # ============================================================
+
 
 def add_source_and_id(chanks, source):
     for id in range(len(chanks)):
         chanks[id]["source"] = source
         chanks[id]["chunkID"] = id
+        chanks["chunkHash"] = hash_text(chanks[id]["text"])
     return chanks
+
 
 def merge_chunks_by_source(chunks):
     grouped = defaultdict(lambda: {"chunkIDs": [], "texts": []})
@@ -23,14 +25,13 @@ def merge_chunks_by_source(chunks):
     # Превращаем в список и сортируем по source
     result = []
     for source, data in grouped.items():
-        result.append({
-            "source": source,
-            "chunkIDs": data["chunkIDs"],
-            "texts": data["texts"]
-        })
+        result.append(
+            {"source": source, "chunkIDs": data["chunkIDs"], "texts": data["texts"]}
+        )
 
     result.sort(key=lambda x: x["source"])
     return result
+
 
 def tokenize_len(text: str) -> int:
     """Простейший токенайзер: считает слова."""
@@ -58,6 +59,7 @@ def convert_table_to_text(table):
 #      МЯГКОЕ ДЕЛЕНИЕ СЛИШКОМ БОЛЬШОГО ЛОГИЧЕСКОГО БЛОКА
 # ============================================================
 
+
 def split_block_soft(block, min_size, max_size):
     """Режет слишком большой логический блок по словам."""
     words = block.split()
@@ -84,6 +86,7 @@ def split_block_soft(block, min_size, max_size):
 # ============================================================
 #             ЛОГИЧЕСКОЕ ДЕЛЕНИЕ ТАБЛИЦЫ
 # ============================================================
+
 
 def split_table_logically(table_text, min_size, max_size):
     """
@@ -161,6 +164,7 @@ def split_table_logically(table_text, min_size, max_size):
 #         ДЕЛЕНИЕ ОГРОМНОГО ТЕКСТА НА ЧАНКИ
 # ============================================================
 
+
 def split_text_by_max_size(text, min_size, max_size, strict=True):
     """
     Делит текст по словам так, чтобы каждый чанк ≤ max_size.
@@ -190,6 +194,7 @@ def split_text_by_max_size(text, min_size, max_size, strict=True):
 #                ОСНОВНАЯ ФУНКЦИЯ CHUNKING
 # ============================================================
 
+
 def normalize_pre_chunks(pre_chunks, min_size=50, max_size=200, strict=True):
     """
     Объединяет текст, режет большие блоки,
@@ -204,11 +209,13 @@ def normalize_pre_chunks(pre_chunks, min_size=50, max_size=200, strict=True):
     def flush_chunk():
         nonlocal current_text, current_len, current_tables
         if current_text:
-            result_chunks.append({
-                "text": "\n\n".join(current_text),
-                "chunkSize": current_len,
-                "tables": current_tables.copy()
-            })
+            result_chunks.append(
+                {
+                    "text": "\n\n".join(current_text),
+                    "chunkSize": current_len,
+                    "tables": current_tables.copy(),
+                }
+            )
             current_text = []
             current_tables = []
             current_len = 0
@@ -217,7 +224,6 @@ def normalize_pre_chunks(pre_chunks, min_size=50, max_size=200, strict=True):
     # 1. основной цикл
     # ---------------------------
     for item in pre_chunks:
-
         # ======================================
         # TEXT
         # ======================================
@@ -281,7 +287,7 @@ def normalize_pre_chunks(pre_chunks, min_size=50, max_size=200, strict=True):
                 merged = {
                     "text": buffer["text"] + "\n\n" + ch["text"],
                     "chunkSize": buffer["chunkSize"] + ch["chunkSize"],
-                    "tables": buffer["tables"] + ch["tables"]
+                    "tables": buffer["tables"] + ch["tables"],
                 }
                 buffer = merged
         else:
@@ -290,7 +296,7 @@ def normalize_pre_chunks(pre_chunks, min_size=50, max_size=200, strict=True):
                     merged = {
                         "text": buffer["text"] + "\n\n" + ch["text"],
                         "chunkSize": buffer["chunkSize"] + ch["chunkSize"],
-                        "tables": buffer["tables"] + ch["tables"]
+                        "tables": buffer["tables"] + ch["tables"],
                     }
                     final.append(merged)
                 else:

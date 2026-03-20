@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- NeuroFile Dark Theme - Web Style -->
+    <color name="bg_app">#21201C</color>
+    <color name="bg_sidebar">#191816</color>
+    <color name="bg_input">#2F2E2B</color>
+    <color name="bg_input_focus">#383633</color>
+    <color name="bg_message_user">#2F2E2B</color>
+    <color name="bg_message_ai">#1E1E1E</color>
+
+    <color name="text_primary">#ECECEC</color>
+    <color name="text_secondary">#A19D96</color>
+    <color name="text_muted">#999999</color>
+
+    <color name="primary">#308446</color>
+    <color name="primary_dark">#287233</color>
+    <color name="accent">#D97757</color>
+
+    <color name="surface">#1E1E1E</color>
+    <color name="on_surface">#ECECEC</color>
+    <color name="on_surface_variant">#A19D96</color>
+
+    <color name="bg_border">#444444</color>
+    <color name="white">#FFFFFF</color>
+    <color name="black">#000000</color>
+    <color name="error">#FF6B6B</color>
+    <color name="success">#28A745</color>
+</resources>

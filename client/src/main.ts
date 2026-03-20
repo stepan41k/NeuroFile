@@ -446,7 +446,13 @@ class NeuralInterface {
                     <div class="typing-dot"></div>
                 </div>
             `
-            const res = await fetch(`${API_URL}/chat/send`, {
+			// Передаем false в format, чтобы не экранировать HTML
+			const loadingMsg = this.appendMessage('Neuro', loadingHTML, 'ai', false)
+			const contentDiv = loadingMsg.querySelector(
+				'.message-content'
+			) as HTMLElement
+
+			const res = await fetch(`${API_URL}/chat/send`, {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json',
@@ -462,14 +468,10 @@ class NeuralInterface {
 			if (!res.ok) throw new Error('Error')
 
 			const data = await res.json()
-            // Передаем false в format, чтобы не экранировать HTML
-            const loadingMsg = this.appendMessage('Neuro', loadingHTML, 'ai', true, data.files_used || [])
-            const contentDiv = loadingMsg.querySelector(
-                '.message-content'
-            ) as HTMLElement
 
 			// Запускаем печать ответа (Typewriter)
 			if (data.content) {
+                this.appendMessage('Neuro', data.content, 'ai', true, data.files_used || [])
                 await this.typeWriterEffect(contentDiv, data.content)
 			} else if (data.error) {
 				contentDiv.innerHTML = `❌ ${data.error}`

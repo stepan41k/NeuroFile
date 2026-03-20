@@ -1,0 +1,325 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.drawerlayout.widget.DrawerLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/drawerLayout"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/bg_app"
+    android:fitsSystemWindows="true">
+
+    <!-- Основной контент -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:fitsSystemWindows="true">
+
+        <!-- Toolbar -->
+        <com.google.android.material.appbar.MaterialToolbar
+            android:id="@+id/toolbar"
+            android:layout_width="match_parent"
+            android:layout_height="?attr/actionBarSize"
+            android:background="@color/bg_sidebar"
+            app:title="NeuroChat"
+            app:titleTextColor="@color/text_primary">
+
+            <!-- Кнопка меню чата (три точки) слева -->
+            <ImageButton
+                android:id="@+id/btnChatMenu"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_gravity="start"
+                android:layout_marginStart="8dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/ic_more"
+                android:contentDescription="Меню чата"
+                android:visibility="gone" />
+
+            <!-- Кнопка меню файлов справа -->
+            <ImageButton
+                android:id="@+id/btnFilesMenu"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_gravity="end"
+                android:layout_marginEnd="8dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/ic_folder"
+                android:contentDescription="Файлы"
+                app:tint="@color/text_secondary" />
+
+        </com.google.android.material.appbar.MaterialToolbar>
+
+        <!-- Контейнер для фрагмента чата -->
+        <FrameLayout
+            android:id="@+id/chatFragmentContainer"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
+
+        <!-- Поле ввода сообщения -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:padding="16dp"
+            android:background="@color/bg_app"
+            android:gravity="center_vertical">
+
+            <EditText
+                android:id="@+id/etMessage"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_input_container"
+                android:hint="Message Neuro..."
+                android:textColor="@color/text_primary"
+                android:textColorHint="@color/text_secondary"
+                android:paddingStart="16dp"
+                android:paddingEnd="16dp"
+                android:maxLines="1"
+                android:inputType="text"
+                android:textSize="15sp"
+                android:layout_marginEnd="12dp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnSend"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:insetLeft="0dp"
+                android:insetTop="0dp"
+                android:insetRight="0dp"
+                android:insetBottom="0dp"
+                app:icon="@drawable/ic_send"
+                app:iconGravity="textStart"
+                app:iconPadding="0dp"
+                app:iconSize="24dp"
+                app:cornerRadius="24dp"
+                style="@style/Widget.MaterialComponents.Button" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+    <!-- Левое меню - Список чатов -->
+    <com.google.android.material.navigation.NavigationView
+        android:id="@+id/navigationChats"
+        android:layout_width="280dp"
+        android:layout_height="match_parent"
+        android:layout_gravity="start"
+        android:background="@color/bg_sidebar"
+        android:fitsSystemWindows="true">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical">
+
+            <!-- Кнопка Новый чат -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnNewChat"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:layout_margin="16dp"
+                android:text="New chat"
+                android:textAllCaps="false"
+                app:icon="@drawable/ic_add"
+                app:iconGravity="textStart"
+                style="@style/Widget.MaterialComponents.Button" />
+
+            <!-- Заголовок Recent Chats -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="16dp"
+                android:layout_marginBottom="8dp"
+                android:layout_marginTop="8dp"
+                android:text="RECENT CHATS"
+                android:textColor="@color/text_secondary"
+                android:textSize="11sp"
+                android:textStyle="bold"
+                android:letterSpacing="0.1" />
+
+            <!-- Список чатов -->
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/rvChatsList"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:clipToPadding="false" />
+
+            <!-- Профиль пользователя -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:padding="16dp"
+                android:gravity="center_vertical"
+                android:background="?attr/selectableItemBackground">
+
+                <View
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:background="@drawable/bg_avatar"
+                    android:gravity="center" />
+
+                <TextView
+                    android:id="@+id/tvUsername"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="12dp"
+                    android:text="User"
+                    android:textColor="@color/text_primary"
+                    android:textSize="14sp" />
+
+                <ImageButton
+                    android:id="@+id/btnLogout"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:src="@drawable/ic_logout"
+                    android:contentDescription="Выйти" />
+
+            </LinearLayout>
+
+        </LinearLayout>
+
+    </com.google.android.material.navigation.NavigationView>
+
+    <!-- Правое меню - Документы -->
+    <com.google.android.material.navigation.NavigationView
+        android:id="@+id/navigationFiles"
+        android:layout_width="280dp"
+        android:layout_height="match_parent"
+        android:layout_gravity="end"
+        android:background="@color/bg_sidebar"
+        android:fitsSystemWindows="true">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <!-- Заголовок -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="16dp">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="MY FILES"
+                    android:textColor="@color/text_primary"
+                    android:textSize="12sp"
+                    android:textStyle="bold"
+                    android:letterSpacing="0.1" />
+
+                <ImageButton
+                    android:id="@+id/btnRefreshFiles"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:src="@drawable/ic_refresh"
+                    android:contentDescription="Обновить" />
+
+            </LinearLayout>
+
+            <!-- Поиск -->
+            <EditText
+                android:id="@+id/etSearchFiles"
+                android:layout_width="match_parent"
+                android:layout_height="40dp"
+                android:background="@drawable/bg_search_input"
+                android:hint="Find file..."
+                android:textColor="@color/text_primary"
+                android:textColorHint="@color/text_secondary"
+                android:paddingStart="36dp"
+                android:paddingEnd="12dp"
+                android:drawableStart="@android:drawable/ic_menu_search"
+                android:drawablePadding="8dp"
+                android:inputType="text"
+                android:maxLines="1" />
+
+            <!-- Фильтры -->
+            <HorizontalScrollView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:scrollbars="none"
+                android:layout_marginTop="12dp"
+                android:layout_marginBottom="12dp">
+
+                <LinearLayout
+                    android:id="@+id/filterTagsContainer"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <com.google.android.material.chip.Chip
+                        android:id="@+id/chipAll"
+                        android:layout_width="wrap_content"
+                        android:layout_height="32dp"
+                        android:text="All"
+                        android:checked="true"
+                        android:layout_marginEnd="6dp" />
+
+                    <com.google.android.material.chip.Chip
+                        android:id="@+id/chipPdf"
+                        android:layout_width="wrap_content"
+                        android:layout_height="32dp"
+                        android:text="PDF"
+                        android:layout_marginEnd="6dp" />
+
+                    <com.google.android.material.chip.Chip
+                        android:id="@+id/chipDoc"
+                        android:layout_width="wrap_content"
+                        android:layout_height="32dp"
+                        android:text="DOC"
+                        android:layout_marginEnd="6dp" />
+
+                    <com.google.android.material.chip.Chip
+                        android:id="@+id/chipDocx"
+                        android:layout_width="wrap_content"
+                        android:layout_height="32dp"
+                        android:text="DOCX"
+                        android:layout_marginEnd="6dp" />
+
+                    <com.google.android.material.chip.Chip
+                        android:id="@+id/chipRtf"
+                        android:layout_width="wrap_content"
+                        android:layout_height="32dp"
+                        android:text="RTF" />
+
+                </LinearLayout>
+
+            </HorizontalScrollView>
+
+            <!-- Список файлов -->
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/rvFilesList"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1" />
+
+            <!-- Кнопка загрузки -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnUploadFile"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Upload File"
+                android:textAllCaps="false"
+                app:icon="@drawable/ic_folder"
+                app:iconGravity="textStart"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
+
+        </LinearLayout>
+
+    </com.google.android.material.navigation.NavigationView>
+
+</androidx.drawerlayout.widget.DrawerLayout>

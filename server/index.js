@@ -1,4 +1,3 @@
-// server.js
 import express from 'express'
 import pkg from 'pg'
 import cors from 'cors'
@@ -7,33 +6,27 @@ import jwt from 'jsonwebtoken'
 import multer from 'multer'
 import fs from 'fs'
 import path from 'path'
-import fetch from 'node-fetch' // Если у тебя Node 18+ можно убрать и использовать global fetch
+import fetch from 'node-fetch'
 import { fileURLToPath } from 'url'
 
 const { Pool } = pkg
 
-// --- Конфигурация ---
 const app = express()
 const PORT = process.env.PORT || 3000
 const SECRET_KEY = process.env.JWT_SECRET || 'neuro-secret-key'
 const UPLOADS_PATH = process.env.UPLOADS_PATH || './uploads'
 const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://ai-agent:3001/chat/answer'
-// server.js
 const AI_SERVICE_SAVE_URL = process.env.AI_SERVICE_SAVE_URL || 'http://ai_agent:3001/create_file'
 
-// Пути
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
-// Создаем папку uploads
 if (!fs.existsSync(UPLOADS_PATH)) fs.mkdirSync(UPLOADS_PATH, { recursive: true })
 
-// Middleware
 app.use(cors())
 app.use(express.json())
 app.use('/uploads', express.static(UPLOADS_PATH))
 
-// --- Подключение к Postgres ---
 const pool = new Pool({
   user: process.env.DB_USER || 'admin',
   host: process.env.DB_HOST || 'localhost',
@@ -42,7 +35,6 @@ const pool = new Pool({
   port: process.env.DB_PORT || 5432,
 })
 
-// Функция инициализации таблиц (создаёт колонки files_used и attention если их нет)
 const initDB = async () => {
   let retries = 5
   while (retries) {
@@ -58,7 +50,6 @@ const initDB = async () => {
   }
 
   try {
-    // 1. Таблица Users
     await pool.query(`
       CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
@@ -67,7 +58,6 @@ const initDB = async () => {
       );
     `)
 
-    // 2. Таблица Files
     await pool.query(`
       CREATE TABLE IF NOT EXISTS files (
         id SERIAL PRIMARY KEY,
@@ -81,7 +71,6 @@ const initDB = async () => {
       );
     `)
 
-    // 3. Таблица Chats
     await pool.query(`
       CREATE TABLE IF NOT EXISTS chats (
         id SERIAL PRIMARY KEY,
@@ -91,7 +80,6 @@ const initDB = async () => {
       );
     `)
 
-    // 4. Таблица Messages с JSONB полями files_used и attention
     await pool.query(`
       CREATE TABLE IF NOT EXISTS messages (
         id SERIAL PRIMARY KEY,
@@ -104,16 +92,14 @@ const initDB = async () => {
       );
     `)
 
-    console.log('Tables initialized (Users, Files, Chats, Messages with files_used & attention)')
+    console.log('Tables initialized')
   } catch (err) {
     console.error('Error initializing tables:', err)
   }
 }
 
-// Запускаем инициализацию
 initDB()
 
-// --- Настройка Multer ---
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, UPLOADS_PATH),
   filename: (req, file, cb) => {
@@ -127,7 +113,6 @@ const upload = multer({
   limits: { fileSize: 50 * 1024 * 1024 },
 })
 
-// --- Middleware Auth ---
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization']
   const token = authHeader && authHeader.split(' ')[1]
@@ -140,9 +125,6 @@ const authenticateToken = (req, res, next) => {
   })
 }
 
-// --- API Роуты ---
-
-// 1. Регистрация
 app.post('/api/register', async (req, res) => {
   const { username, password } = req.body
   if (!username || !password) return res.status(400).json({ error: 'Заполните все поля' })
@@ -161,7 +143,6 @@ app.post('/api/register', async (req, res) => {
   }
 })
 
-// 2. Логин
 app.post('/api/login', async (req, res) => {
   const { username, password } = req.body
   try {
@@ -185,8 +166,6 @@ app.get('/api/auth/verify', authenticateToken, (req, res) => {
   res.json({ status: 'valid', user: { id: req.user.id, username: req.user.username } })
 })
 
-// 3. Загрузка файла
-// 3. Загрузка файла + отправка на AI Agent
 app.post('/api/files', authenticateToken, (req, res) => {
     const uploadSingle = upload.single('file')
     uploadSingle(req, res, async err => {
@@ -206,7 +185,6 @@ app.post('/api/files', authenticateToken, (req, res) => {
             )
             const newFileId = result.rows[0].id
 
-            // --- Отправка файла на AI Agent ---
             try {
                 const FormData = (await import('form-data')).default
                 const fs = (await import('fs')).default
@@ -227,7 +205,6 @@ app.post('/api/files', authenticateToken, (req, res) => {
                 console.error('Error uploading file to AI Agent:', aiErr)
             }
 
-            // --- Ответ клиенту ---
             res.json({ id: newFileId, name: originalname, size, type })
         } catch (dbErr) {
             console.error(dbErr)
@@ -236,7 +213,6 @@ app.post('/api/files', authenticateToken, (req, res) => {
     })
 })
 
-// 4. Список файлов
 app.get('/api/files', authenticateToken, async (req, res) => {
   try {
     const result = await pool.query('SELECT id, original_name as name, size, type FROM files WHERE user_id = $1 ORDER BY uploaded_at DESC', [req.user.id])
@@ -247,7 +223,6 @@ app.get('/api/files', authenticateToken, async (req, res) => {
   }
 })
 
-// 5. Удаление файла
 app.delete('/api/files/:id', authenticateToken, async (req, res) => {
   const fileId = req.params.id
   try {
@@ -263,7 +238,6 @@ app.delete('/api/files/:id', authenticateToken, async (req, res) => {
   }
 })
 
-// Переименование файла
 app.put('/api/files/:id', authenticateToken, async (req, res) => {
   const { id } = req.params
   const { name } = req.body
@@ -280,9 +254,6 @@ app.put('/api/files/:id', authenticateToken, async (req, res) => {
   }
 })
 
-// --- CHAT / CHATS ENDPOINTS ---
-
-// Создать чат
 app.post('/api/chats', authenticateToken, async (req, res) => {
   const { title } = req.body
   const chatTitle = title || 'New Chat'
@@ -295,7 +266,6 @@ app.post('/api/chats', authenticateToken, async (req, res) => {
   }
 })
 
-// Получить список чатов
 app.get('/api/chats', authenticateToken, async (req, res) => {
   try {
     const query = `
@@ -314,7 +284,6 @@ app.get('/api/chats', authenticateToken, async (req, res) => {
   }
 })
 
-// Получить сообщения чата (включая files_used и attention)
 app.get('/api/chats/:id/messages', authenticateToken, async (req, res) => {
   const chatId = req.params.id
   try {
@@ -331,7 +300,6 @@ app.get('/api/chats/:id/messages', authenticateToken, async (req, res) => {
   }
 })
 
-// --- Основной исправленный роут: отправка сообщения в чат и сохранение files_used/attention ---
 app.post('/api/chat/send', authenticateToken, async (req, res) => {
   const { chat_id, content, separate_conflicts } = req.body
   const userId = req.user.id
@@ -339,28 +307,23 @@ app.post('/api/chat/send', authenticateToken, async (req, res) => {
   if (!chat_id || !content) return res.status(400).json({ error: 'Missing chat_id or content' })
 
   try {
-    // 1) Проверка прав на чат
     const chatCheck = await pool.query('SELECT id FROM chats WHERE id = $1 AND user_id = $2', [chat_id, userId])
     if (chatCheck.rows.length === 0) return res.status(403).json({ error: 'Access denied to chat' })
 
-    // 2) Сохраняем сообщение пользователя
     await pool.query(
       `INSERT INTO messages (chat_id, role, content, files_used, attention) VALUES ($1, $2, $3, $4, $5)`,
       [chat_id, 'user', content, JSON.stringify([]), JSON.stringify([])]
     )
 
-    // 3) Собираем историю для AI: берем role, content, files_used, attention
     const historyRes = await pool.query(
       `SELECT role, content, files_used, attention FROM messages WHERE chat_id = $1 ORDER BY timestamp ASC`,
       [chat_id]
     )
     const rawHistory = historyRes.rows
 
-    // 4) Список файлов пользователя
     const filesRes = await pool.query('SELECT original_name FROM files WHERE user_id = $1', [userId])
     const filesList = filesRes.rows.map(f => f.original_name)
 
-    // 5) Формируем system instruction
     let systemInstruction = 'You are a helpful assistant.'
     if (filesList.length > 0) {
       systemInstruction += ` You have access to the following files: ${filesList.join(', ')}. Use them to answer user questions.`
@@ -371,9 +334,8 @@ app.post('/api/chat/send', authenticateToken, async (req, res) => {
 
     const systemMessage = { role: 'system', message: systemInstruction }
 
-    // 6) Форматируем историю в формат API (assistant/user)
     const formattedHistory = rawHistory.map(m => {
-      const role = m.role === 'ai' ? 'assistant' : m.role // if role stored 'ai' -> assistant; 'user' stays user
+      const role = m.role === 'ai' ? 'assistant' : m.role
       return {
         role,
         message: m.content,
@@ -382,10 +344,8 @@ app.post('/api/chat/send', authenticateToken, async (req, res) => {
       }
     })
 
-    // Собираем payload для внешнего AI сервиса
     const chatPayload = [systemMessage, ...formattedHistory]
 
-    // 7) Отправляем в AI
     let aiText = ''
     let savedFilesUsed = []
     let savedAttention = []
@@ -407,28 +367,23 @@ app.post('/api/chat/send', authenticateToken, async (req, res) => {
 
       const aiData = await aiResponse.json()
 
-      // Ожидаем структуру { chat: [ { role: "assistant", message: "...", files_used: [...], attention: [...] }, ... ] }
       if (aiData && Array.isArray(aiData.chat) && aiData.chat.length > 0) {
-        // Сохраним все assistant-сообщения, но вернём последнее в ответе
         for (const msgObj of aiData.chat) {
           if (!msgObj || msgObj.role !== 'assistant') continue
           const text = msgObj.message || ''
           const fu = msgObj.files_used && Array.isArray(msgObj.files_used) ? msgObj.files_used : []
           const at = msgObj.attention && Array.isArray(msgObj.attention) ? msgObj.attention : []
 
-          // Сохраняем в БД как отдельное сообщение
           await pool.query(
             `INSERT INTO messages (chat_id, role, content, files_used, attention) VALUES ($1, $2, $3, $4, $5)`,
             [chat_id, 'ai', text, JSON.stringify(fu), JSON.stringify(at)]
           )
 
-          // Для выдачи клиенту оставим последнее ассистентское сообщение и его метаданные
           aiText = text
           savedFilesUsed = fu
           savedAttention = at
         }
       } else {
-        // Если структура другая или пустая —fallback: возьмём сырый ответ
         aiText = 'Error: Empty or invalid response structure from AI agent.'
       }
     } catch (aiErr) {
@@ -436,7 +391,6 @@ app.post('/api/chat/send', authenticateToken, async (req, res) => {
       aiText = 'Error: Could not connect to AI Agent. Please try again later.'
     }
 
-    // 8) Возвращаем ответ фронтенду
     res.json({ role: 'ai', content: aiText, files_used: savedFilesUsed, attention: savedAttention })
   } catch (err) {
     console.error('Chat Endpoint Error:', err)
@@ -444,7 +398,6 @@ app.post('/api/chat/send', authenticateToken, async (req, res) => {
   }
 })
 
-// Запуск
 const server = app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`)
 })
