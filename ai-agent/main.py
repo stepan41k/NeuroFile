@@ -1,9 +1,10 @@
 import csv
 import time
 from pathlib import Path
+
 import torch
+from object.Models import LLM, Reranker
 from object.SystemSearch import SearchSystem
-from object.Models import Reranker, LLM
 
 # =========================== НАСТРОЙКИ ===========================
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -30,23 +31,24 @@ def smart_search_chunk(searchSystem: SearchSystem, reranker: Reranker, question:
 
     for chunk in chunks:
         context_chunks = searchSystem.get_context_chunks(
-            chunk["payload"]["chunkID"],
-            chunk["payload"]["source"],
-            0
+            chunk["payload"]["chunkID"], chunk["payload"]["source"], 0
         )
 
         chunk_ids = [ch["chunkID"] for ch in context_chunks]
         texts = [ch["text"] for ch in context_chunks]
 
-        filter_result.append({
-            "source": chunk["payload"]["source"],
-            "chunkIDs": chunk_ids,
-            "texts": texts
-        })
+        filter_result.append(
+            {
+                "source": chunk["payload"]["source"],
+                "chunkIDs": chunk_ids,
+                "texts": texts,
+            }
+        )
     # Получение лучших чанков(с контекстом)
     reranker_output = reranker.rerank_results(question, filter_result, 5, 0.0)
 
     return reranker_output
+
 
 # ==============================
 #           MAIN
@@ -73,9 +75,10 @@ def main():
     # ============================== ОБРАБОТКА ===============================
     start_processing = time.time()
     total_questions = 0
-    with open("test_file/input.csv", newline="", encoding="utf-8") as f_in, \
-         open("output.csv", "w", newline="", encoding="utf-8") as f_out:
-
+    with (
+        open("test_file/input.csv", newline="", encoding="utf-8") as f_in,
+        open("output.csv", "w", newline="", encoding="utf-8") as f_out,
+    ):
         reader = csv.DictReader(f_in)
         writer = csv.writer(f_out)
         writer.writerow(["id", "answer", "documents"])
@@ -94,7 +97,7 @@ def main():
             for chunk_with_context in top_k_chunks:
                 source_chunks.add(chunk_with_context["source"])
                 for chunk in chunk_with_context["texts"]:
-                    context = context + chunk + '\n'
+                    context = context + chunk + "\n"
                 context = context + "\n---\n"
 
             # ====== Генерация ответа ======
@@ -112,6 +115,7 @@ def main():
     print(f"Средняя скорость:    {avg_speed:.2f} вопросов в секунду")
     print(f"Общее время:         {total_time:.1f} сек")
     print("ГОТОВО! output.csv сохранён.")
+
 
 if __name__ == "__main__":
     main()
